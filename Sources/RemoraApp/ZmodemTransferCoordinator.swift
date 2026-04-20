@@ -119,24 +119,20 @@ final class ZmodemTransferCoordinator: ObservableObject {
 
     private func enqueueWrite(_ data: Data) {
         pendingWrites.append(data)
-        NSLog("[ZmodemCoord] enqueueWrite: %d bytes, queue size=%d", data.count, pendingWrites.count)
         drainWriteQueue()
     }
 
     private func drainWriteQueue() {
         guard !isWriting, !pendingWrites.isEmpty, let writer = writeToSession else { return }
         isWriting = true
-        NSLog("[ZmodemCoord] drainWriteQueue: starting, %d items", pendingWrites.count)
 
         Task { @MainActor [weak self] in
             guard let self else { return }
             while !self.pendingWrites.isEmpty {
                 let data = self.pendingWrites.removeFirst()
-                NSLog("[ZmodemCoord] writing %d bytes to session", data.count)
                 try? await writer(data)
             }
             self.isWriting = false
-            NSLog("[ZmodemCoord] drainWriteQueue: done")
         }
     }
 

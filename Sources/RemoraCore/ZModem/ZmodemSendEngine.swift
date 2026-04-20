@@ -70,7 +70,6 @@ public final class ZmodemSendEngine: @unchecked Sendable {
         }
         if state == .waitingForFiles {
             state = .waitingForZRINIT
-            Self.log("setFiles: \(fileQueue.count) files, buffer has \(buffer.count) bytes")
             processBuffer()
         }
     }
@@ -79,7 +78,6 @@ public final class ZmodemSendEngine: @unchecked Sendable {
     public func feedOutput(_ data: Data) {
         guard isActive else { return }
         buffer.append(data)
-        Self.log("feedOutput: +\(data.count) bytes, total buffer=\(buffer.count), state=\(state)")
 
         if buffer.count > 4 * 1024 * 1024 {
             emit(.error("ZMODEM send buffer overflow"))
@@ -135,16 +133,8 @@ public final class ZmodemSendEngine: @unchecked Sendable {
     }
 
     private func handleWaitingForZRINIT() -> Bool {
-        guard let (header, consumed) = parseNextHeader() else {
-            Self.log("waitingForZRINIT: no header found in \(buffer.count) bytes")
-            if buffer.count > 0 {
-                let preview = Array(buffer.prefix(min(buffer.count, 64)))
-                Self.log("  buffer hex: \(preview.map { String(format: "%02X", $0) }.joined(separator: " "))")
-            }
-            return false
-        }
+        guard let (header, consumed) = parseNextHeader() else { return false }
         buffer.removeFirst(consumed)
-        Self.log("waitingForZRINIT: got header type=\(header.type) consumed=\(consumed)")
 
         if header.type == .ZRINIT {
             sendNextFile()
@@ -154,12 +144,8 @@ public final class ZmodemSendEngine: @unchecked Sendable {
     }
 
     private func handleWaitingForZRPOS() -> Bool {
-        guard let (header, consumed) = parseNextHeader() else {
-            Self.log("waitingForZRPOS: no header found in \(buffer.count) bytes")
-            return false
-        }
+        guard let (header, consumed) = parseNextHeader() else { return false }
         buffer.removeFirst(consumed)
-        Self.log("waitingForZRPOS: got header type=\(header.type)")
 
         if header.type == .ZRPOS {
             let offset = header.position
@@ -179,15 +165,11 @@ public final class ZmodemSendEngine: @unchecked Sendable {
         }
         if header.type == .ZRINIT {
             // rz resends ZRINIT before it processes our ZFILE — just ignore it
-            Self.log("waitingForZRPOS: ignoring stale ZRINIT")
             return true
         }
         if header.type == .ZNAK {
-            // rz couldn't parse our last packet — resend ZFILE
             znakRetryCount += 1
-            Self.log("waitingForZRPOS: got ZNAK #\(znakRetryCount), resending ZFILE")
             if znakRetryCount > maxZnakRetries {
-                Self.log("waitingForZRPOS: too many ZNAKs, aborting")
                 emit(.error("Transfer failed: too many retries"))
                 cancel()
                 return true
@@ -251,9 +233,6 @@ public final class ZmodemSendEngine: @unchecked Sendable {
     }
 
     private func sendZFILE() {
-        Self.log("sendZFILE: sending ZFILE for '\(currentFileName)' size=\(currentFileSize)")
-
-        // Use ZBIN32 header + CRC-32 sub-packet (must be consistent)
         let zfile = ZmodemHeader(type: .ZFILE)
         let headerData = zmodemEncodeBin32Header(zfile)
 
@@ -268,9 +247,6 @@ public final class ZmodemSendEngine: @unchecked Sendable {
         // Send header + sub-packet as a single write to avoid fragmentation
         var combined = headerData
         combined.append(subPacketData)
-        Self.log("sendZFILE: total \(combined.count) bytes, header=\(headerData.count) sub=\(subPacketData.count)")
-        let preview = Array(combined.prefix(min(combined.count, 80)))
-        Self.log("sendZFILE hex: \(preview.map { String(format: "%02X", $0) }.joined(separator: " "))")
         emit(.sendToRemote(combined))
 
         state = .waitingForZRPOS
@@ -284,7 +260,6 @@ public final class ZmodemSendEngine: @unchecked Sendable {
 
     private func sendFileData(from offset: UInt32) {
         guard let fileData = currentFileData else { return }
-        Self.log("sendFileData: from offset=\(offset), total=\(fileData.count)")
 
         // Build entire ZDATA frame as one contiguous buffer to avoid fragmentation
         var frame = Data()
