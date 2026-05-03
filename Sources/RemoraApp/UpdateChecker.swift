@@ -380,7 +380,7 @@ final class UpdateChecker: ObservableObject {
     }
 
     private func tr(_ key: String) -> String {
-        L10n.tr(key, fallback: key)
+        L10n.tr(key, fallback: key, table: "UpdateChecker")
     }
 }
 
@@ -436,12 +436,20 @@ private enum UpdateCheckError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            return L10n.tr("The update service returned an unexpected response.", fallback: "The update service returned an unexpected response.")
+            return L10n.tr(
+                "The update service returned an unexpected response.",
+                fallback: "The update service returned an unexpected response.",
+                table: "UpdateChecker"
+            )
         case .invalidPayload:
-            return L10n.tr("The latest release metadata was incomplete.", fallback: "The latest release metadata was incomplete.")
+            return L10n.tr(
+                "The latest release metadata was incomplete.",
+                fallback: "The latest release metadata was incomplete.",
+                table: "UpdateChecker"
+            )
         case let .httpStatus(statusCode):
             return String(
-                format: L10n.tr("GitHub returned HTTP %d.", fallback: "GitHub returned HTTP %d."),
+                format: L10n.tr("GitHub returned HTTP %d.", fallback: "GitHub returned HTTP %d.", table: "UpdateChecker"),
                 statusCode
             )
         }
