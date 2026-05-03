@@ -33,6 +33,7 @@ struct TerminalViewTests {
     func copyActionWritesSelectedTextToPasteboard() {
         let view = TerminalView(rows: 6, columns: 40)
         view.feed(data: Data("alpha beta\r\n".utf8))
+        view.flushPendingOutput()
         view.selectAll()
 
         NSPasteboard.general.clearContents()
@@ -45,6 +46,7 @@ struct TerminalViewTests {
     func outputWithoutTrailingNewlineKeepsPromptOnSameLine() {
         let view = TerminalView(rows: 6, columns: 80)
         view.feed(data: Data("{\"code\":404}PROMPT> ".utf8))
+        view.flushPendingOutput()
         view.selectAll()
 
         NSPasteboard.general.clearContents()
@@ -60,6 +62,7 @@ struct TerminalViewTests {
     func outputWithTrailingNewlineStartsPromptOnNextLine() {
         let view = TerminalView(rows: 6, columns: 80)
         view.feed(data: Data("ok\r\nPROMPT> ".utf8))
+        view.flushPendingOutput()
         view.selectAll()
 
         NSPasteboard.general.clearContents()

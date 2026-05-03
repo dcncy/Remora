@@ -310,9 +310,8 @@ final class TerminalRuntime: ObservableObject {
     }
 
     func respondToPasswordPrompt(password: String) {
-        let trimmed = password.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        enqueueInput(Data("\(trimmed)\n".utf8), trackWorkingDirectory: false)
+        guard !password.isEmpty else { return }
+        enqueueInput(Data((password + "\n").utf8), trackWorkingDirectory: false)
         passwordPromptMessage = nil
         activeSSHAuthStage = nil
         sshAuthProbeTail.removeAll(keepingCapacity: false)
