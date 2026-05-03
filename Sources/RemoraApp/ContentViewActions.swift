@@ -749,6 +749,25 @@ extension ContentView {
         hostCatalog.markConnected(hostID: host.id)
     }
 
+    func cloneSession(_ tabID: UUID) {
+        guard let tab = workspace.tab(id: tabID),
+              let runtime = runtimeForTab(tab),
+              let host = runtime.reconnectableSSHHost
+        else {
+            return
+        }
+
+        // Create a new tab and connect with the same host.
+        // For key/agent auth: ControlMaster reuses the connection (no prompt).
+        // For password auth: sshpass auto-fills the stored password.
+        workspace.createTab(title: tab.title, connectLocalShell: false)
+        guard let newTabID = workspace.activeTabID else { return }
+        workspace.selectTab(newTabID)
+        workspace.connectActivePane(host: host, template: nil)
+        bootstrapFileManagerBindingForActiveRuntime()
+        hostCatalog.markConnected(hostID: host.id)
+    }
+
     func refreshOrReconnectFileManagerForActivePane() {
         guard let activeTabID = workspace.activeTabID,
               let runtime = workspace.activePane?.runtime
