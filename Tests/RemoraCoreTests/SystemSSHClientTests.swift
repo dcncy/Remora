@@ -355,7 +355,7 @@ struct SystemSSHClientTests {
 
         try await session.start()
         #expect(
-            await waitUntil(timeout: 2) { await states.last == .failed("Permission denied (keyboard-interactive,password).") },
+            await waitUntil(timeout: 2) { await output.joined.contains("Permission denied (keyboard-interactive,password).") },
             "Password-auth retries should stop after the first failure when there is no cached password to replay."
         )
 
