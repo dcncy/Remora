@@ -30,6 +30,7 @@ struct ContentView: View {
     @State var bottomPanelVisibility = BottomPanelVisibilityState(terminal: true, fileManager: false)
     @State var workspaceFocusMode: WorkspaceFocusMode = .none
     @State var collapsedGroupNames: Set<String> = []
+    @RemoraStored(\.collapsedGroupNames) var persistedCollapsedGroupNames: [String]
     @State var isGroupEditorSheetPresented = false
     @State var groupEditorMode: SidebarGroupEditorMode = .create
     @State var groupEditorSourceName = ""
@@ -209,6 +210,7 @@ struct ContentView: View {
 
         let lifecycleContent = rootContent
             .onAppear {
+                collapsedGroupNames = Set(persistedCollapsedGroupNames)
                 if selectedHostID == nil {
                     selectedHostID = hostCatalog.hosts.first?.id
                 }
@@ -304,6 +306,9 @@ struct ContentView: View {
             }
             .onChange(of: hostCatalog.groups) {
                 collapsedGroupNames = collapsedGroupNames.intersection(Set(hostCatalog.groups))
+            }
+            .onChange(of: collapsedGroupNames) {
+                persistedCollapsedGroupNames = Array(collapsedGroupNames).sorted()
             }
             .onChange(of: serverMetricsActiveRefreshSeconds) {
                 syncServerMetricsConfiguration()

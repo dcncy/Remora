@@ -15,17 +15,20 @@ struct AppSettingsTests {
         preferences.set(AppAppearanceMode.dark.rawValue, for: \.appearanceModeRawValue)
         preferences.set("sk-test-123", for: \.aiAPIKey)
         preferences.set(false, for: \.automaticallyCheckForUpdates)
+        preferences.set(["Ops"], for: \.collapsedGroupNames)
 
         let rawText = try String(contentsOf: fileURL, encoding: .utf8)
         let rawObject = try #require(JSONSerialization.jsonObject(with: Data(rawText.utf8)) as? [String: Any])
         #expect(rawText.contains(AppAppearanceMode.dark.rawValue))
         #expect(rawText.contains("sk-test-123"))
         #expect(rawObject["automaticallyCheckForUpdates"] as? Bool == false)
+        #expect(rawObject["collapsedGroupNames"] as? [String] == ["Ops"])
 
         let reloaded = AppPreferences(fileURL: fileURL)
         #expect(reloaded.value(for: \.appearanceModeRawValue) == AppAppearanceMode.dark.rawValue)
         #expect(reloaded.value(for: \.aiAPIKey) == "sk-test-123")
         #expect(reloaded.value(for: \.automaticallyCheckForUpdates) == false)
+        #expect(reloaded.value(for: \.collapsedGroupNames) == ["Ops"])
     }
 
     @Test
@@ -135,6 +138,7 @@ struct AppSettingsTests {
         let decoded = try JSONDecoder().decode(AppPreferencesSnapshot.self, from: Data(legacyJSON.utf8))
         #expect(decoded.appearanceModeRawValue == "dark")
         #expect(decoded.automaticallyCheckForUpdates == true)
+        #expect(decoded.collapsedGroupNames.isEmpty)
     }
 
     @MainActor
@@ -154,6 +158,23 @@ struct AppSettingsTests {
 
         let reloaded = AppPreferences(fileURL: fileURL)
         #expect(reloaded.value(for: \.terminalCopyOnSelect) == true)
+    }
+
+    @MainActor
+    @Test
+    func collapsedGroupNamesAreNormalizedWhenPersisted() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("remora-collapsed-groups-\(UUID().uuidString)", isDirectory: true)
+        let fileURL = root.appendingPathComponent("settings.json", isDirectory: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let preferences = AppPreferences(fileURL: fileURL)
+        preferences.set([" Ops ", "Prod", "Prod", ""], for: \.collapsedGroupNames)
+
+        #expect(preferences.value(for: \.collapsedGroupNames) == ["Ops", "Prod"])
+
+        let reloaded = AppPreferences(fileURL: fileURL)
+        #expect(reloaded.value(for: \.collapsedGroupNames) == ["Ops", "Prod"])
     }
 
     @Test

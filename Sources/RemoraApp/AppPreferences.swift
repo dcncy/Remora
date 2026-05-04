@@ -6,6 +6,7 @@ struct AppPreferencesSnapshot: Codable, Equatable {
     var appearanceModeRawValue: String
     var languageModeRawValue: String
     var downloadDirectoryPath: String
+    var collapsedGroupNames: [String]
     var aiEnabled: Bool
     var aiProviderRawValue: String
     var aiAPIFormatRawValue: String
@@ -31,6 +32,7 @@ struct AppPreferencesSnapshot: Codable, Equatable {
             appearanceModeRawValue: AppAppearanceMode.system.rawValue,
             languageModeRawValue: AppLanguageMode.system.rawValue,
             downloadDirectoryPath: AppSettings.defaultDownloadDirectoryURL(fileManager: fileManager).path,
+            collapsedGroupNames: [],
             aiEnabled: AppSettings.defaultAIEnabled,
             aiProviderRawValue: AppSettings.defaultAIActiveProvider,
             aiAPIFormatRawValue: AppSettings.defaultAIAPIFormat,
@@ -59,6 +61,9 @@ struct AppPreferencesSnapshot: Codable, Equatable {
             from: downloadDirectoryPath,
             fileManager: fileManager
         ).path
+        normalized.collapsedGroupNames = Array(
+            Set(collapsedGroupNames.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        ).sorted()
         normalized.aiTranscriptLineCount = AppSettings.clampedAITerminalTranscriptLineCount(aiTranscriptLineCount)
         normalized.aiAPIKey = aiAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
         normalized.serverMetricsActiveRefreshSeconds = AppSettings.clampedServerMetricsActiveRefreshSeconds(serverMetricsActiveRefreshSeconds)
@@ -73,6 +78,7 @@ extension AppPreferencesSnapshot {
         case appearanceModeRawValue
         case languageModeRawValue
         case downloadDirectoryPath
+        case collapsedGroupNames
         case aiEnabled
         case aiProviderRawValue
         case aiAPIFormatRawValue
@@ -99,6 +105,7 @@ extension AppPreferencesSnapshot {
         appearanceModeRawValue = try container.decode(String.self, forKey: .appearanceModeRawValue)
         languageModeRawValue = try container.decode(String.self, forKey: .languageModeRawValue)
         downloadDirectoryPath = try container.decode(String.self, forKey: .downloadDirectoryPath)
+        collapsedGroupNames = try container.decodeIfPresent([String].self, forKey: .collapsedGroupNames) ?? []
         aiEnabled = try container.decode(Bool.self, forKey: .aiEnabled)
         aiProviderRawValue = try container.decode(String.self, forKey: .aiProviderRawValue)
         aiAPIFormatRawValue = try container.decode(String.self, forKey: .aiAPIFormatRawValue)
