@@ -105,6 +105,19 @@ struct SystemSFTPClientTests {
     }
 
     @Test
+    func parsesLongListOutputDecodingOctalEscapedUTF8Names() {
+        let output = #"""
+        -rw-r--r--    1 root root      12 Jan 13 09:01 \344\270\255\346\226\207.txt
+        """#
+
+        let entries = SystemSFTPClient.parseLongListOutput(output, parentPath: "/tmp")
+
+        #expect(entries.count == 1)
+        #expect(entries[0].name == "中文.txt")
+        #expect(entries[0].path == "/tmp/中文.txt")
+    }
+
+    @Test
     func parsesPermissionsAndOwnershipFromLongList() {
         let output = """
         -rw-r-----    1 user1 group2     512 Feb 10 2024 app.conf
@@ -147,6 +160,20 @@ struct SystemSFTPClientTests {
         #expect(entries[0].name == "lighting")
         #expect(entries[0].path == "/home/lighting")
         #expect(entries[0].isDirectory)
+    }
+
+    @Test
+    func parsesNameOnlyOutputDecodingOctalEscapedUTF8Names() {
+        let output = #"""
+        \346\265\213\350\257\225/
+        \344\270\255\346\226\207.txt
+        """#
+
+        let entries = SystemSFTPClient.parseNameOnlyListOutput(output, parentPath: "/tmp")
+
+        #expect(entries.count == 2)
+        #expect(entries.contains(where: { $0.name == "测试" && $0.path == "/tmp/测试" && $0.isDirectory }))
+        #expect(entries.contains(where: { $0.name == "中文.txt" && $0.path == "/tmp/中文.txt" && !$0.isDirectory }))
     }
 
     @Test

@@ -673,10 +673,74 @@ public actor SystemSFTPClient: SFTPClientProtocol {
             candidate = URL(fileURLWithPath: candidate).lastPathComponent
         }
 
+        candidate = decodeEscapedListedName(candidate)
         candidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !candidate.isEmpty else { return nil }
         guard candidate != "." && candidate != ".." else { return nil }
         return candidate
+    }
+
+    private static func decodeEscapedListedName(_ rawName: String) -> String {
+        guard rawName.contains("\\") else {
+            return rawName
+        }
+
+        let bytes = Array(rawName.utf8)
+        var decoded: [UInt8] = []
+        decoded.reserveCapacity(bytes.count)
+
+        var index = 0
+        while index < bytes.count {
+            let byte = bytes[index]
+            guard byte == 0x5C else {
+                decoded.append(byte)
+                index += 1
+                continue
+            }
+
+            let nextIndex = index + 1
+            guard nextIndex < bytes.count else {
+                decoded.append(byte)
+                index += 1
+                continue
+            }
+
+            let nextByte = bytes[nextIndex]
+            if isOctalDigit(nextByte) {
+                var octalValue: UInt8 = 0
+                var octalDigits = 0
+                var cursor = nextIndex
+                while cursor < bytes.count, octalDigits < 3, isOctalDigit(bytes[cursor]) {
+                    octalValue = octalValue * 8 + (bytes[cursor] - 48)
+                    octalDigits += 1
+                    cursor += 1
+                }
+                decoded.append(octalValue)
+                index = cursor
+                continue
+            }
+
+            switch nextByte {
+            case 0x5C: decoded.append(0x5C)
+            case 0x20: decoded.append(0x20)
+            case 0x61: decoded.append(0x07)
+            case 0x62: decoded.append(0x08)
+            case 0x66: decoded.append(0x0C)
+            case 0x6E: decoded.append(0x0A)
+            case 0x72: decoded.append(0x0D)
+            case 0x74: decoded.append(0x09)
+            case 0x76: decoded.append(0x0B)
+            default:
+                decoded.append(nextByte)
+            }
+            index += 2
+        }
+
+        return String(bytes: decoded, encoding: .utf8) ?? rawName
+    }
+
+    private static func isOctalDigit(_ byte: UInt8) -> Bool {
+        byte >= 48 && byte <= 55
     }
 
     private static func parseLongListDate(
