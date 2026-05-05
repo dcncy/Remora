@@ -94,6 +94,8 @@ final class RemoraEditorCoordinator: NSObject, WKScriptMessageHandler, WKNavigat
             let revision = message.revision ?? 0
             parent.onChange?(revision)
             parent.onEvent?(.changed(revision: revision))
+            // Full-text pull-on-change is retained only for MirroredRemoraEditorView.
+            // The remote file editor path must not mirror live text back into Swift.
             if parent.onTextChange != nil {
                 requestText(reason: .change)
             }

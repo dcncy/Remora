@@ -1,5 +1,8 @@
 import SwiftUI
 
+// Compatibility wrapper for small local text-editing surfaces that still need a SwiftUI text binding.
+// Do not use this for production remote file editing, SFTP-backed documents, logs, or large files.
+// Use RemoraEditorView for stable descriptor/content-version driven editor ownership.
 struct MirroredRemoraEditorView: View {
     @Binding private var text: String
     private let documentID: String
