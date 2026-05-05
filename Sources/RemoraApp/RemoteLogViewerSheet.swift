@@ -117,8 +117,11 @@ struct RemoteLogViewerSheet: View {
                         get: { viewModel.text },
                         set: { _ in }
                     ),
+                    language: .plain,
+                    path: viewModel.path,
                     isEditable: false,
-                    autoScrollToBottom: viewModel.isFollowing
+                    autoScrollToBottom: viewModel.isFollowing,
+                    syncMode: .continuous
                 )
                 if viewModel.isLoading {
                     ProgressView("Loading...")

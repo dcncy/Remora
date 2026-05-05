@@ -6,7 +6,7 @@ import RemoraCore
 struct RemoteTextEditorViewModelTests {
     @Test
     @MainActor
-    func editorTracksDirtyStateWithoutFullStringComparison() async throws {
+    func editorLoadsAndSavesTextThroughViewModel() async throws {
         let fileTransfer = FileTransferViewModel(
             sftpClient: MockSFTPClient(),
             remoteDirectoryPath: "/"
@@ -17,13 +17,11 @@ struct RemoteTextEditorViewModelTests {
         )
 
         await viewModel.load()
-        #expect(viewModel.hasUnsavedChanges == false)
+        #expect(viewModel.text.contains("Remora"))
 
-        viewModel.updateText(viewModel.text + "\nupdated")
-        #expect(viewModel.hasUnsavedChanges)
-
-        await viewModel.save()
-        #expect(viewModel.hasUnsavedChanges == false)
+        let updated = viewModel.text + "\nupdated"
+        await viewModel.save(text: updated)
+        #expect(viewModel.text.contains("updated"))
     }
 
     @Test

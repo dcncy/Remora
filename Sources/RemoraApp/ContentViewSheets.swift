@@ -1213,6 +1213,7 @@ struct HostQuickCommandEditorSheet: View {
 
                 RemoteTextEditorRepresentable(
                     text: $commandDraft,
+                    language: .shell,
                     isEditable: true
                 )
                 .frame(minHeight: 110, maxHeight: 180)

@@ -16,12 +16,6 @@ struct FileManagerPanelView: View {
         var message: String
     }
 
-    private struct RemoteEditorTarget: Equatable {
-        var path: String
-        var size: Int64
-        var modifiedAt: Date
-    }
-
     private enum RemoteCreateKind {
         case file
         case directory
@@ -185,6 +179,7 @@ struct FileManagerPanelView: View {
     var onAddCurrentQuickPath: (String) -> Void = { _ in }
     var onRefreshRemote: () -> Void = {}
     var onEditDownloadPath: (() -> Void)?
+    @StateObject private var remoteEditorWindowManager: RemoteTextEditorWindowManager
 
     @State private var selectedRemotePaths: Set<String> = []
     @State private var hoveredRemotePath: String?
@@ -199,7 +194,6 @@ struct FileManagerPanelView: View {
     @State private var isRenameSheetPresented = false
     @State private var renameTargetPath: String?
     @State private var renameDraft = ""
-    @State private var editorTarget: RemoteEditorTarget?
     @State private var logViewerTargetPath: String?
     @State private var propertiesTargetPath: String?
     @State private var permissionsEditorTargetPath: String?
@@ -228,6 +222,27 @@ struct FileManagerPanelView: View {
     @State private var remoteSearchDebounceTask: Task<Void, Never>?
     @State private var remoteListPresentation = RemoteListPresentationCache.empty
     @FocusState private var isRemoteSearchFieldFocused: Bool
+
+    init(
+        viewModel: FileTransferViewModel,
+        quickPaths: [HostQuickPath] = [],
+        onRunQuickPath: @escaping (HostQuickPath) -> Void = { _ in },
+        onManageQuickPaths: @escaping () -> Void = {},
+        onAddCurrentQuickPath: @escaping (String) -> Void = { _ in },
+        onRefreshRemote: @escaping () -> Void = {},
+        onEditDownloadPath: (() -> Void)? = nil
+    ) {
+        self.viewModel = viewModel
+        self.quickPaths = quickPaths
+        self.onRunQuickPath = onRunQuickPath
+        self.onManageQuickPaths = onManageQuickPaths
+        self.onAddCurrentQuickPath = onAddCurrentQuickPath
+        self.onRefreshRemote = onRefreshRemote
+        self.onEditDownloadPath = onEditDownloadPath
+        _remoteEditorWindowManager = StateObject(
+            wrappedValue: RemoteTextEditorWindowManager(fileTransfer: viewModel)
+        )
+    }
 
     private var selectedRemoteEntries: [RemoteFileEntry] {
         selectedRemotePaths.compactMap { remoteListPresentation.itemsByPath[$0]?.sourceEntry }
@@ -419,27 +434,6 @@ struct FileManagerPanelView: View {
         }
         .sheet(isPresented: $isCreateRemoteSheetPresented) {
             createRemoteSheet
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { editorTarget != nil },
-                set: { isPresented in
-                    if !isPresented {
-                        editorTarget = nil
-                    }
-                }
-            )
-        ) {
-            if let editorTarget {
-                RemoteTextEditorSheet(
-                    path: editorTarget.path,
-                    loadOptions: RemoteTextDocumentLoadOptions(
-                        knownSize: editorTarget.size,
-                        knownModifiedAt: editorTarget.modifiedAt
-                    ),
-                    fileTransfer: viewModel
-                )
-            }
         }
         .sheet(
             isPresented: Binding(
@@ -1755,10 +1749,12 @@ struct FileManagerPanelView: View {
             presentLargeFileEditPrompt(for: entry)
             return
         }
-        editorTarget = RemoteEditorTarget(
+        remoteEditorWindowManager.present(
             path: entry.path,
-            size: entry.size,
-            modifiedAt: entry.modifiedAt
+            loadOptions: RemoteTextDocumentLoadOptions(
+                knownSize: entry.size,
+                knownModifiedAt: entry.modifiedAt
+            )
         )
     }
 

@@ -1,104 +1,64 @@
-import AppKit
 import SwiftUI
 
-struct RemoteTextEditorRepresentable: NSViewRepresentable {
-    @Binding var text: String
-    var isEditable: Bool
-    var autoScrollToBottom: Bool = false
+struct RemoteTextEditorRepresentable: View {
+    @Binding private var text: String
+    private let language: EditorLanguage
+    private let path: String?
+    private let isEditable: Bool
+    private let autoScrollToBottom: Bool
+    private let syncMode: EditorTextSyncMode
+    private let saveRequestID: Int
+    private let contentVersion: Int
+    private let onChange: ((Int) -> Void)?
+    private let onSaveRequested: ((String) -> Void)?
+    private let onError: ((String) -> Void)?
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
+    init(
+        text: Binding<String>,
+        language: EditorLanguage = .plain,
+        path: String? = nil,
+        isEditable: Bool,
+        autoScrollToBottom: Bool = false,
+        syncMode: EditorTextSyncMode = .continuous,
+        saveRequestID: Int = 0,
+        contentVersion: Int = 0,
+        onChange: ((Int) -> Void)? = nil,
+        onSaveRequested: ((String) -> Void)? = nil,
+        onError: ((String) -> Void)? = nil
+    ) {
+        _text = text
+        self.language = language
+        self.path = path
+        self.isEditable = isEditable
+        self.autoScrollToBottom = autoScrollToBottom
+        self.syncMode = syncMode
+        self.saveRequestID = saveRequestID
+        self.contentVersion = contentVersion
+        self.onChange = onChange
+        self.onSaveRequested = onSaveRequested
+        self.onError = onError
     }
 
-    func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
-        scrollView.borderType = .noBorder
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = false
-
-        let textView = NSTextView()
-        textView.delegate = context.coordinator
-        textView.isRichText = false
-        textView.importsGraphics = false
-        textView.allowsImageEditing = false
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticDataDetectionEnabled = false
-        textView.isAutomaticLinkDetectionEnabled = false
-        textView.isAutomaticTextReplacementEnabled = false
-        textView.isContinuousSpellCheckingEnabled = false
-        textView.isGrammarCheckingEnabled = false
-        textView.smartInsertDeleteEnabled = false
-        textView.usesFindBar = true
-        textView.allowsUndo = true
-        textView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
-        textView.textContainerInset = NSSize(width: 8, height: 10)
-        textView.drawsBackground = false
-        textView.isHorizontallyResizable = false
-        textView.isVerticallyResizable = true
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(
-            width: 0,
-            height: CGFloat.greatestFiniteMagnitude
+    var body: some View {
+        RemoraEditorWebView(
+            document: EditorDocument(
+                path: path,
+                text: text,
+                language: language,
+                isEditable: isEditable,
+                lineWrapping: true
+            ),
+            saveRequestID: saveRequestID,
+            contentVersion: contentVersion,
+            syncMode: syncMode,
+            autoScrollToBottom: autoScrollToBottom,
+            onReady: nil,
+            onChange: onChange,
+            onTextChange: { newText in
+                text = newText
+            },
+            onSaveRequested: onSaveRequested,
+            onError: onError
         )
-        textView.string = text
-        textView.isEditable = isEditable
-        textView.isSelectable = true
-
-        scrollView.documentView = textView
-        context.coordinator.textView = textView
-        context.coordinator.lastSyncedText = text
-        return scrollView
-    }
-
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = context.coordinator.textView ?? scrollView.documentView as? NSTextView else {
-            return
-        }
-
-        if context.coordinator.changeOrigin == .textView {
-            context.coordinator.changeOrigin = .swiftUI
-        } else if context.coordinator.lastSyncedText != text {
-            let selectedRange = textView.selectedRange()
-            textView.string = text
-            if autoScrollToBottom {
-                let endRange = NSRange(location: textView.string.utf16.count, length: 0)
-                textView.setSelectedRange(endRange)
-                textView.scrollRangeToVisible(endRange)
-            } else {
-                textView.setSelectedRange(selectedRange)
-            }
-            context.coordinator.lastSyncedText = text
-        }
-
-        textView.isEditable = isEditable
-    }
-
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        enum ChangeOrigin {
-            case swiftUI
-            case textView
-        }
-
-        @Binding var text: String
-        weak var textView: NSTextView?
-        var lastSyncedText: String
-        var changeOrigin: ChangeOrigin = .swiftUI
-
-        init(text: Binding<String>) {
-            _text = text
-            self.lastSyncedText = text.wrappedValue
-        }
-
-        func textDidChange(_ notification: Notification) {
-            guard let textView else { return }
-            changeOrigin = .textView
-            let updated = textView.string
-            lastSyncedText = updated
-            text = updated
-        }
     }
 }

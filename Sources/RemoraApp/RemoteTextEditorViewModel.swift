@@ -2,19 +2,27 @@ import Foundation
 
 @MainActor
 final class RemoteTextEditorViewModel: ObservableObject {
+    enum SaveStatus: Equatable {
+        case idle
+        case saving
+        case failed(String)
+    }
+
     @Published var text: String = ""
     @Published private(set) var encodingLabel: String = "UTF-8"
     @Published private(set) var isLoading = false
-    @Published private(set) var isSaving = false
-    @Published private(set) var isReadOnly = false
-    @Published private(set) var hasUnsavedChanges = false
+    @Published private(set) var isDirty = false
+    @Published private(set) var saveStatus: SaveStatus = .idle
     @Published var errorMessage: String?
 
     let path: String
+    let language: EditorLanguage
 
     private let fileTransfer: FileTransferViewModel
     private let loadOptions: RemoteTextDocumentLoadOptions
     private var expectedModifiedAt: Date?
+    private var saveRequestGeneration = 0
+    private var contentVersionGeneration = 0
 
     init(
         path: String,
@@ -24,19 +32,30 @@ final class RemoteTextEditorViewModel: ObservableObject {
         self.path = path
         self.loadOptions = loadOptions
         self.fileTransfer = fileTransfer
+        self.language = .infer(from: path)
+    }
+
+    var saveRequestID: Int {
+        saveRequestGeneration
+    }
+
+    var contentVersion: Int {
+        contentVersionGeneration
     }
 
     func load() async {
         isLoading = true
+        EditorDebugLog.log("viewModel.load path=\(path)")
         defer { isLoading = false }
 
         do {
             let doc = try await fileTransfer.loadTextDocument(path: path, options: loadOptions)
             text = doc.text
-            hasUnsavedChanges = false
             encodingLabel = doc.encoding
             expectedModifiedAt = doc.modifiedAt
-            isReadOnly = doc.isReadOnly
+            contentVersionGeneration += 1
+            isDirty = false
+            EditorDebugLog.log("viewModel.load success chars=\(doc.text.count) contentVersion=\(contentVersionGeneration)")
             errorMessage = nil
         } catch let error as RemoteTextDocumentError {
             switch error {
@@ -54,21 +73,23 @@ final class RemoteTextEditorViewModel: ObservableObject {
         }
     }
 
-    func updateText(_ newValue: String) {
-        text = newValue
-        if !hasUnsavedChanges {
-            hasUnsavedChanges = true
+    func requestSave() {
+        guard !isLoading, saveStatus != .saving else { return }
+        saveRequestGeneration += 1
+        EditorDebugLog.log("viewModel.requestSave saveRequestID=\(saveRequestGeneration)")
+    }
+
+    func markDirty() {
+        if !isDirty {
+            isDirty = true
+            EditorDebugLog.log("viewModel.markDirty")
         }
     }
 
-    func save() async {
-        guard !isReadOnly else {
-            errorMessage = "This file is opened as read-only due to size limits."
-            return
-        }
-
-        isSaving = true
-        defer { isSaving = false }
+    func save(text: String) async {
+        saveStatus = .saving
+        self.text = text
+        EditorDebugLog.log("viewModel.save begin chars=\(text.count)")
 
         do {
             expectedModifiedAt = try await fileTransfer.saveTextDocument(
@@ -76,9 +97,15 @@ final class RemoteTextEditorViewModel: ObservableObject {
                 text: text,
                 expectedModifiedAt: expectedModifiedAt
             )
-            hasUnsavedChanges = false
+            self.text = text
+            contentVersionGeneration += 1
+            isDirty = false
+            saveStatus = .idle
+            EditorDebugLog.log("viewModel.save success contentVersion=\(contentVersionGeneration)")
             errorMessage = nil
         } catch {
+            saveStatus = .failed(error.localizedDescription)
+            EditorDebugLog.log("viewModel.save failed error=\(error.localizedDescription)")
             errorMessage = error.localizedDescription
         }
     }
