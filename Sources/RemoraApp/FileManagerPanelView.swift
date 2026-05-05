@@ -1707,7 +1707,7 @@ struct FileManagerPanelView: View {
            lastTappedRemotePath == item.path,
            now.timeIntervalSince(lastRemoteTapAt) < 0.32
         {
-            showOperationToast(tr("To edit this file, right-click it and choose Edit."))
+            beginEdit(item)
             lastTappedRemotePath = nil
             lastRemoteTapAt = .distantPast
             return
