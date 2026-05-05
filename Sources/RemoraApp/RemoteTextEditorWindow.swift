@@ -234,6 +234,24 @@ final class RemoteTextEditorWindowController: NSWindowController {
         refreshWindowState()
     }
 
+    private func refreshTitle() {
+        let fileName = URL(fileURLWithPath: viewModel.path).lastPathComponent
+
+        let prefix: String = {
+            switch viewModel.saveStatus {
+            case .idle:
+                return viewModel.isDirty ? "Not Saved - " : ""
+            case .saving:
+                return "Saving… - "
+            case .failed:
+                return "Save Failed - "
+            }
+        }()
+
+        window?.title = prefix + fileName
+        window?.isDocumentEdited = viewModel.isDirty
+    }
+
     private func refreshWindowState() {
         editorViewController.descriptor = viewModel.documentDescriptor
         editorViewController.saveRequestID = viewModel.saveRequestID
@@ -252,5 +270,7 @@ final class RemoteTextEditorWindowController: NSWindowController {
             errorLabel.stringValue = ""
             errorLabel.isHidden = true
         }
+
+        refreshTitle()
     }
 }

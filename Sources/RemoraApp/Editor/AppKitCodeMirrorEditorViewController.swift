@@ -115,6 +115,14 @@ final class AppKitCodeMirrorEditorViewController: NSViewController {
         }
     }
 
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        view.window?.makeFirstResponder(webView)
+        webView.evaluateJavaScript(
+            "window.RemoraEditor.focusPreservingScroll && window.RemoraEditor.focusPreservingScroll()"
+        )
+    }
+
     override func viewWillDisappear() {
         super.viewWillDisappear()
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "remoraEditor")

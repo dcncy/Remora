@@ -22,6 +22,18 @@ final class FocusableCodeMirrorWebView: WKWebView {
         }
 
         switch key {
+        case "a":
+            selectAll(nil)
+            return true
+        case "c":
+            copy(nil)
+            return true
+        case "x":
+            cut(nil)
+            return true
+        case "v":
+            paste(nil)
+            return true
         case "s":
             invokeEditorAction("requestSave")
             return true

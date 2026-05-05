@@ -179,6 +179,12 @@ function createEditor() {
         ".cm-content": {
           caretColor: "var(--remora-caret)"
         },
+        ".cm-cursor": {
+          borderLeftColor: "var(--remora-caret)"
+        },
+        ".cm-dropCursor": {
+          borderLeftColor: "var(--remora-caret)"
+        },
         ".cm-focused": {
           outline: "none"
         },
@@ -264,6 +270,23 @@ function replaceSelection(text: string) {
   insertText(text);
 }
 
+function deleteSelection() {
+  const selection = view.state.selection.main;
+  if (selection.empty) return;
+
+  view.dispatch({
+    changes: {
+      from: selection.from,
+      to: selection.to,
+      insert: ""
+    },
+    selection: {
+      anchor: selection.from
+    },
+    scrollIntoView: true
+  });
+}
+
 function pasteText(text: string) {
   focusPreservingScroll();
   insertText(text);
@@ -306,7 +329,7 @@ function copySelection() {
 
 function cutSelection() {
   focusPreservingScroll();
-  document.execCommand("cut");
+  deleteSelection();
 }
 
 function runSearch(query: string, options?: SearchOptions) {
@@ -432,6 +455,10 @@ function runSearch(query: string, options?: SearchOptions) {
 
   cutSelection() {
     cutSelection();
+  },
+
+  deleteSelection() {
+    deleteSelection();
   },
 
   scrollToBottom() {
