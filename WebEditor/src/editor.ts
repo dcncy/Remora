@@ -229,6 +229,13 @@ function createEditor() {
     parent
   });
 
+  const editorRect = view.dom.getBoundingClientRect();
+  const scrollerRect = view.scrollDOM.getBoundingClientRect();
+  const parentRect = parent.getBoundingClientRect();
+  debugToNative(
+    `readyRects parent=${parentRect.x},${parentRect.y},${parentRect.width},${parentRect.height} editor=${editorRect.x},${editorRect.y},${editorRect.width},${editorRect.height} scroller=${scrollerRect.x},${scrollerRect.y},${scrollerRect.width},${scrollerRect.height}`
+  );
+
   postToNative({ type: "ready" });
 }
 
@@ -309,6 +316,13 @@ function pasteText(text: string) {
 
 function setLogDocument(text: string, follow: boolean) {
   replaceWholeDocument(trimLogText(text));
+  const editor = document.querySelector(".cm-editor") as HTMLElement | null;
+  const scroller = document.querySelector(".cm-scroller") as HTMLElement | null;
+  const editorRect = editor?.getBoundingClientRect();
+  const scrollerRect = scroller?.getBoundingClientRect();
+  debugToNative(
+    `setLogDocument follow=${follow} chars=${text.length} editorRect=${editorRect ? `${editorRect.x},${editorRect.y},${editorRect.width},${editorRect.height}` : "n/a"} scrollerRect=${scrollerRect ? `${scrollerRect.x},${scrollerRect.y},${scrollerRect.width},${scrollerRect.height}` : "n/a"}`
+  );
   if (follow) {
     view.scrollDOM.scrollTop = view.scrollDOM.scrollHeight;
   }

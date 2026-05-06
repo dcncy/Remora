@@ -126,6 +126,16 @@ final class AppKitCodeMirrorEditorViewController: NSViewController {
         webView.evaluateJavaScript(
             "window.RemoraEditor.focusPreservingScroll && window.RemoraEditor.focusPreservingScroll()"
         )
+        EditorDebugLog.log(
+            "editor.viewDidAppear view=\(view.frame.debugDescription) webView=\(webView.frame.debugDescription) bounds=\(webView.bounds.debugDescription) firstResponder=\(String(describing: view.window?.firstResponder))"
+        )
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        EditorDebugLog.log(
+            "editor.viewDidLayout view=\(view.frame.debugDescription) webView=\(webView.frame.debugDescription) bounds=\(webView.bounds.debugDescription)"
+        )
     }
 
     override func viewWillDisappear() {

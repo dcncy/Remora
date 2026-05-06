@@ -100,6 +100,9 @@ final class RemoteLiveLogWindowManager: ObservableObject {
 
 @MainActor
 final class RemoteLiveLogWindowController: NSWindowController, NSWindowDelegate {
+    private static let defaultContentSize = NSSize(width: 1000, height: 720)
+    private static let minimumContentSize = NSSize(width: 640, height: 400)
+
     let viewModel: RemoteLiveLogViewerViewModel
     let viewController: AppKitCodeMirrorLogViewerViewController
     private let onClose: () -> Void
@@ -110,19 +113,21 @@ final class RemoteLiveLogWindowController: NSWindowController, NSWindowDelegate 
         self.onClose = onClose
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 720),
+            contentRect: NSRect(origin: .zero, size: Self.defaultContentSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.contentViewController = viewController
-        window.minSize = NSSize(width: 640, height: 400)
+        window.minSize = Self.minimumContentSize
         window.isReleasedWhenClosed = false
         window.tabbingMode = .preferred
         window.title = tr("Live View")
 
         super.init(window: window)
+        window.setContentSize(Self.defaultContentSize)
         window.delegate = self
+        logWindowGeometry(context: "init")
         configureBindings()
         Task { await viewModel.load() }
     }
@@ -175,10 +180,30 @@ final class RemoteLiveLogWindowController: NSWindowController, NSWindowDelegate 
         viewModel.stop()
         onClose()
     }
+
+    func windowDidResize(_ notification: Notification) {
+        logWindowGeometry(context: "windowDidResize")
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        logWindowGeometry(context: "windowDidBecomeKey")
+    }
+
+    private func logWindowGeometry(context: String) {
+        guard let window else { return }
+        let frame = window.frame
+        let contentRect = window.contentRect(forFrameRect: frame)
+        let layoutRect = window.contentLayoutRect
+        let contentBounds = window.contentView?.bounds ?? .zero
+        EditorDebugLog.log(
+            "liveLog.window[\(context)] frame=\(frame.debugDescription) contentRect=\(contentRect.debugDescription) contentLayoutRect=\(layoutRect.debugDescription) contentBounds=\(contentBounds.debugDescription) styleMask=\(window.styleMask.rawValue)"
+        )
+    }
 }
 
 @MainActor
 final class AppKitCodeMirrorLogViewerViewController: NSViewController {
+    private static let preferredViewerSize = NSSize(width: 1000, height: 720)
     private let editorViewController = AppKitCodeMirrorEditorViewController(
         interactionMode: .logViewer,
         descriptor: EditorDocumentDescriptor(
@@ -208,9 +233,14 @@ final class AppKitCodeMirrorLogViewerViewController: NSViewController {
     private let loadingIndicator = NSProgressIndicator()
     private let errorLabel = NSTextField(labelWithString: "")
     private let maxLogChars = 2 * 1024 * 1024
+    private let rootStack = NSStackView()
+    private let headerStack = NSStackView()
+    private let controlsStack = NSStackView()
+    private let closeRow = NSStackView()
 
     override func loadView() {
-        view = NSView()
+        view = NSView(frame: NSRect(origin: .zero, size: Self.preferredViewerSize))
+        preferredContentSize = Self.preferredViewerSize
     }
 
     override func viewDidLoad() {
@@ -249,12 +279,12 @@ final class AppKitCodeMirrorLogViewerViewController: NSViewController {
         errorLabel.lineBreakMode = .byWordWrapping
         errorLabel.maximumNumberOfLines = 0
 
-        let headerStack = NSStackView(views: [titleLabel, pathLabel, downloadButton, copyPathButton, readOnlyLabel])
+        headerStack.setViews([titleLabel, pathLabel, downloadButton, copyPathButton, readOnlyLabel], in: .leading)
         headerStack.orientation = .horizontal
         headerStack.alignment = .centerY
         headerStack.spacing = 8
 
-        let controlsStack = NSStackView(views: [followToggle, linesLabel, lineCountField, applyButton, refreshButton])
+        controlsStack.setViews([followToggle, linesLabel, lineCountField, applyButton, refreshButton], in: .leading)
         controlsStack.orientation = .horizontal
         controlsStack.alignment = .centerY
         controlsStack.spacing = 8
@@ -266,11 +296,10 @@ final class AppKitCodeMirrorLogViewerViewController: NSViewController {
         editorView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
 
         let spacer = NSView()
-        let closeRow = NSStackView(views: [spacer, closeButton])
+        closeRow.setViews([spacer, closeButton], in: .leading)
         closeRow.orientation = .horizontal
         closeRow.alignment = .centerY
 
-        let rootStack = NSStackView()
         rootStack.orientation = .vertical
         rootStack.spacing = 10
         rootStack.translatesAutoresizingMaskIntoConstraints = false
@@ -295,6 +324,14 @@ final class AppKitCodeMirrorLogViewerViewController: NSViewController {
         ])
 
         editorViewController.webView.evaluateJavaScript("window.RemoraEditor.setMaxLogChars && window.RemoraEditor.setMaxLogChars(\(maxLogChars))")
+    }
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        let editorView = editorViewController.view
+        EditorDebugLog.log(
+            "liveLog.viewDidLayout view=\(view.frame.debugDescription) rootStack=\(rootStack.frame.debugDescription) header=\(headerStack.frame.debugDescription) controls=\(controlsStack.frame.debugDescription) editor=\(editorView.frame.debugDescription) error=\(errorLabel.frame.debugDescription) closeRow=\(closeRow.frame.debugDescription)"
+        )
     }
 
     func apply(update: LiveLogUpdate, follow: Bool) {
