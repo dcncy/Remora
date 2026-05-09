@@ -290,6 +290,11 @@ public final class TerminalView: SwiftTerm.TerminalView, @preconcurrency SwiftTe
         }
     }
 
+    public override func mouseDown(with event: NSEvent) {
+        focusTerminal()
+        super.mouseDown(with: event)
+    }
+
     private func configure(rows: Int, columns: Int) {
         terminalDelegate = self
         allowMouseReporting = true

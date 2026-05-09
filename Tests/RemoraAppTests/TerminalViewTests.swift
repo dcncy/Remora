@@ -146,6 +146,86 @@ struct TerminalViewTests {
     }
 
     @Test
+    func mouseDownMakesTerminalFirstResponder() throws {
+        let view = TerminalView(rows: 6, columns: 40)
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 240))
+        view.frame = host.bounds
+        host.addSubview(view)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = host
+        window.makeFirstResponder(host)
+
+        let event = try #require(
+            NSEvent.mouseEvent(
+                with: .leftMouseDown,
+                location: NSPoint(x: 160, y: 120),
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: window.windowNumber,
+                context: nil,
+                eventNumber: 1,
+                clickCount: 1,
+                pressure: 1
+            )
+        )
+
+        view.mouseDown(with: event)
+
+        #expect(window.firstResponder === view)
+    }
+
+    @Test
+    func terminalMouseDownDoesNotChangeOtherWindowFirstResponder() throws {
+        let terminalView = TerminalView(rows: 6, columns: 40)
+        let terminalHost = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 240))
+        terminalView.frame = terminalHost.bounds
+        terminalHost.addSubview(terminalView)
+
+        let terminalWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        terminalWindow.contentView = terminalHost
+
+        let editorResponder = FirstResponderProbeView(frame: NSRect(x: 0, y: 0, width: 320, height: 240))
+        let editorWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        editorWindow.contentView = editorResponder
+        editorWindow.makeFirstResponder(editorResponder)
+
+        let event = try #require(
+            NSEvent.mouseEvent(
+                with: .leftMouseDown,
+                location: NSPoint(x: 160, y: 120),
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: terminalWindow.windowNumber,
+                context: nil,
+                eventNumber: 1,
+                clickCount: 1,
+                pressure: 1
+            )
+        )
+
+        terminalView.mouseDown(with: event)
+
+        #expect(terminalWindow.firstResponder === terminalView)
+        #expect(editorWindow.firstResponder === editorResponder)
+    }
+
+    @Test
     func selectionAutoscrollMovesDownWhenPointerDropsBelowViewport() {
         let delta = TerminalSelectionAutoscroll.delta(
             for: -18,
@@ -184,4 +264,8 @@ struct TerminalViewTests {
         #expect(farEdge == 24)
         #expect(farEdge > nearEdge)
     }
+}
+
+private final class FirstResponderProbeView: NSView {
+    override var acceptsFirstResponder: Bool { true }
 }
