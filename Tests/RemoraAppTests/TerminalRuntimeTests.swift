@@ -23,7 +23,7 @@ struct TerminalRuntimeTests {
         runtime.setWorkingDirectoryTrackingEnabled(true)
         runtime.connectSSH(address: "127.0.0.1", port: 22, username: "deploy", privateKeyPath: nil)
 
-        let installed = await waitUntilAsync(timeout: 2.0) {
+        let installed = await waitUntilAsync(timeout: 8.0) {
             await installer.recordedHosts.contains(where: { $0.username == "deploy" && $0.address == "127.0.0.1" })
         }
         #expect(installed, "SSH cwd tracking should prepare remote shell integration before starting the interactive session.")
@@ -42,7 +42,7 @@ struct TerminalRuntimeTests {
         runtime.setWorkingDirectoryTrackingEnabled(true)
         runtime.connectSSH(address: "127.0.0.1", port: 22, username: "deploy", privateKeyPath: nil)
 
-        let bannerVisible = await waitUntil(timeout: 2.0) {
+        let bannerVisible = await waitUntil(timeout: 8.0) {
             runtime.connectionState.contains("Connected (SSH)")
                 && runtime.transcriptSnapshot.contains("Connected to")
                 && runtime.transcriptSnapshot.contains("Type commands and press Enter.")

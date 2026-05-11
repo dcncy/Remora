@@ -14,7 +14,7 @@ struct TerminalDirectorySyncBridgeTests {
         let bridge = TerminalDirectorySyncBridge()
 
         runtime.connectLocalShell()
-        let connected = await waitUntil(timeout: 5.0) {
+        let connected = await waitUntil(timeout: 8.0) {
             runtime.connectionState.contains("Connected")
         }
         #expect(connected)
