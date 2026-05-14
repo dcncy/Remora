@@ -7,6 +7,46 @@ description: Remora 版本更新历史
 
 ## [Unreleased]
 
+## [v0.17.1] - 2026-05-14
+
+### English
+
+#### Added
+
+- Added reusable SSH local port-forward presets so frequently used tunnel destinations can be saved and relaunched more quickly from the connection workflow.
+- Added direct update-download support so published GitHub releases can be fetched from inside Remora instead of sending users out to the browser for every upgrade.
+- Added extension script automation hooks to streamline post-connect and related scripted workflows around terminal sessions.
+
+#### Changed
+
+- Refined terminal-session recovery behavior so reconnect flows can resume more naturally from keyboard-driven interaction paths.
+- Updated the website download entry points to point at the latest packaged release assets.
+
+#### Fixed
+
+- Fixed terminal focus restoration after click-driven interactions so keyboard input returns to the intended session more reliably.
+- Fixed several CI timing-sensitive tests and passphrase-prompt regressions to reduce release risk and improve confidence in the shipped SSH flows.
+- Fixed release delivery friction by aligning the changelog and packaged-download references with the current published version.
+
+### 中文
+
+#### 新增
+
+- 新增可复用的 SSH 本地端口转发预设，常用隧道目标现在可以保存并在连接流程中更快地重新启动。
+- 新增应用内直接下载更新能力，发布到 GitHub Releases 的新版本现在可以在 Remora 内部直接获取，无需每次都跳转浏览器。
+- 新增扩展脚本自动化挂钩，用于简化终端会话连接后的脚本执行等工作流。
+
+#### 变更
+
+- 优化了终端会话恢复行为，让基于键盘交互触发的重连流程更加自然稳定。
+- 更新了官网中的下载入口，使其指向最新版本的打包产物。
+
+#### 修复
+
+- 修复了点击交互后的终端焦点恢复问题，键盘输入现在能更可靠地回到预期的会话中。
+- 修复了多处 CI 时序敏感测试和 passphrase 提示相关回归，降低发布风险并提升 SSH 流程验证的稳定性。
+- 修复了发布链路中的版本引用不一致问题，使 changelog 与下载链接和当前发布版本保持一致。
+
 ## [v0.17.0] - 2026-05-06
 
 ### English
