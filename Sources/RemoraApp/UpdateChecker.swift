@@ -141,22 +141,34 @@ final class UpdateChecker: ObservableObject {
     private func presentAlertIfNeeded(for status: UpdateCheckStatus, trigger: UpdateTrigger) {
         switch (status, trigger) {
         case let (.updateAvailable(release, currentVersion), _):
-            let controller = UpdateAvailableWindowController(
-                release: release,
-                currentVersion: currentVersion,
-                messageText: updateAvailableMessage(for: release, currentVersion: currentVersion),
-                openURL: openURL,
-                downloadHandler: { [weak self] asset, release in
-                    guard let self else { return }
-                    Task { await self.downloadReleaseAsset(asset, release: release) }
-                },
-                tr: { [weak self] key in
-                    self?.tr(key) ?? key
-                }
-            )
-            updateWindowController = controller
-            controller.runModal()
-            updateWindowController = nil
+            if let controller = updateWindowController {
+                controller.update(
+                    release: release,
+                    currentVersion: currentVersion,
+                    messageText: updateAvailableMessage(for: release, currentVersion: currentVersion)
+                )
+                controller.showAndActivate()
+            } else {
+                let controller = UpdateAvailableWindowController(
+                    release: release,
+                    currentVersion: currentVersion,
+                    messageText: updateAvailableMessage(for: release, currentVersion: currentVersion),
+                    openURL: openURL,
+                    downloadHandler: { [weak self] asset, release in
+                        guard let self else { return }
+                        Task { await self.downloadReleaseAsset(asset, release: release) }
+                    },
+                    closeHandler: { [weak self] controller in
+                        guard self?.updateWindowController === controller else { return }
+                        self?.updateWindowController = nil
+                    },
+                    tr: { [weak self] key in
+                        self?.tr(key) ?? key
+                    }
+                )
+                updateWindowController = controller
+                controller.showAndActivate()
+            }
 
         case let (.upToDate(currentVersion), .manual):
             let alert = NSAlert()
@@ -208,19 +220,21 @@ final class UpdateChecker: ObservableObject {
         isDownloading = true
         defer { isDownloading = false }
 
-        let progressWindow = UpdateDownloadProgressWindowController(asset: asset, release: release)
-        progressWindow.showWindow(nil)
-        progressWindow.window?.makeKeyAndOrderFront(nil)
+        updateWindowController?.beginDownload(asset: asset, release: release)
 
         do {
             let destinationURL = try await download(asset: asset) { progress in
-                progressWindow.update(progress)
+                self.updateWindowController?.updateDownloadProgress(progress)
             }
-            progressWindow.close()
             let didOpen = openDownloadedUpdate(destinationURL)
+            updateWindowController?.finishDownload(
+                destinationURL: destinationURL,
+                release: release,
+                didOpen: didOpen
+            )
             presentDownloadCompleteAlert(destinationURL: destinationURL, release: release, didOpen: didOpen)
         } catch {
-            progressWindow.close()
+            updateWindowController?.failDownload(error: error, release: release)
             presentDownloadFailedAlert(error: error, release: release)
         }
     }
@@ -750,6 +764,7 @@ private final class UpdateAvailableWindowController: NSWindowController, NSWindo
     private let release: GitHubRelease
     private let openURL: @MainActor (URL) -> Void
     private let downloadHandler: @MainActor (GitHubReleaseAsset, GitHubRelease) -> Void
+    private let closeHandler: @MainActor (UpdateAvailableWindowController) -> Void
     private let tr: (String) -> String
 
     private let appIconView = NSImageView()
@@ -757,10 +772,20 @@ private final class UpdateAvailableWindowController: NSWindowController, NSWindo
     private let messageLabel = NSTextField(wrappingLabelWithString: "")
     private let notesTitleLabel = NSTextField(labelWithString: "")
     private let webView: WKWebView
+    private let progressTitleLabel = NSTextField(labelWithString: "")
+    private let progressDetailLabel = NSTextField(labelWithString: "")
+    private let progressIndicator = NSProgressIndicator()
+    private let progressContainer = NSStackView()
     private let primaryButton = NSButton(title: "", target: nil, action: nil)
     private let releaseButton = NSButton(title: "", target: nil, action: nil)
     private let laterButton = NSButton(title: "", target: nil, action: nil)
-    private var modalResponse: NSApplication.ModalResponse = .abort
+    private let statusLabel = NSTextField(labelWithString: "")
+
+    private var currentRelease: GitHubRelease
+    private var currentVersion: String
+    private var currentMessageText: String
+    private var currentAsset: GitHubReleaseAsset?
+    private var isDownloadActive = false
 
     init(
         release: GitHubRelease,
@@ -768,11 +793,16 @@ private final class UpdateAvailableWindowController: NSWindowController, NSWindo
         messageText: String,
         openURL: @escaping @MainActor (URL) -> Void,
         downloadHandler: @escaping @MainActor (GitHubReleaseAsset, GitHubRelease) -> Void,
+        closeHandler: @escaping @MainActor (UpdateAvailableWindowController) -> Void,
         tr: @escaping (String) -> String
     ) {
         self.release = release
+        self.currentRelease = release
+        self.currentVersion = currentVersion
+        self.currentMessageText = messageText
         self.openURL = openURL
         self.downloadHandler = downloadHandler
+        self.closeHandler = closeHandler
         self.tr = tr
 
         let configuration = WKWebViewConfiguration()
@@ -806,18 +836,15 @@ private final class UpdateAvailableWindowController: NSWindowController, NSWindo
         fatalError("init(coder:) has not been implemented")
     }
 
-    func runModal() {
+    func showAndActivate() {
         guard let window else { return }
         NSApp.activate(ignoringOtherApps: true)
         showWindow(nil)
-        window.center()
-        NSApp.runModal(for: window)
+        window.makeKeyAndOrderFront(nil)
     }
 
     func windowWillClose(_ notification: Notification) {
-        if NSApp.modalWindow === window {
-            NSApp.stopModal(withCode: modalResponse)
-        }
+        closeHandler(self)
     }
 
     func webView(
@@ -837,27 +864,130 @@ private final class UpdateAvailableWindowController: NSWindowController, NSWindo
 
     @objc
     private func handlePrimaryAction() {
-        if let asset = release.downloadAsset {
-            downloadHandler(asset, release)
+        if let asset = currentRelease.downloadAsset {
+            downloadHandler(asset, currentRelease)
         } else {
-            openURL(release.releaseURL)
+            openURL(currentRelease.releaseURL)
         }
-        closeWithResponse(.alertFirstButtonReturn)
     }
 
     @objc
     private func handleReleaseAction() {
-        openURL(release.releaseURL)
+        openURL(currentRelease.releaseURL)
     }
 
     @objc
     private func handleLaterAction() {
-        closeWithResponse(.alertSecondButtonReturn)
+        window?.close()
     }
 
-    private func closeWithResponse(_ response: NSApplication.ModalResponse) {
-        modalResponse = response
-        window?.close()
+    @objc
+    private func handleRevealInFinder() {
+        guard let destinationPath = statusLabel.objectValue as? String else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: destinationPath)])
+    }
+
+    func update(release: GitHubRelease, currentVersion: String, messageText: String) {
+        self.currentRelease = release
+        self.currentVersion = currentVersion
+        self.currentMessageText = messageText
+        self.currentAsset = nil
+        self.isDownloadActive = false
+        applyReleaseContent()
+    }
+
+    func beginDownload(asset: GitHubReleaseAsset, release: GitHubRelease) {
+        currentRelease = release
+        currentAsset = asset
+        isDownloadActive = true
+
+        progressTitleLabel.stringValue = String(
+            format: L10n.tr("Downloading Remora %@", fallback: "Downloading Remora %@", table: "UpdateChecker"),
+            release.version
+        )
+        progressDetailLabel.stringValue = asset.name
+        progressIndicator.isIndeterminate = true
+        progressIndicator.doubleValue = 0
+        progressIndicator.startAnimation(nil)
+        progressContainer.isHidden = false
+        statusLabel.isHidden = true
+
+        primaryButton.isEnabled = false
+        releaseButton.isEnabled = false
+        laterButton.title = tr("Close")
+        showAndActivate()
+    }
+
+    func updateDownloadProgress(_ progress: UpdateDownloadProgress) {
+        guard isDownloadActive else { return }
+
+        if let fraction = progress.fractionCompleted {
+            progressIndicator.stopAnimation(nil)
+            progressIndicator.isIndeterminate = false
+            progressIndicator.doubleValue = fraction
+            progressDetailLabel.stringValue = String(
+                format: L10n.tr("%@ of %@ downloaded", fallback: "%@ of %@ downloaded", table: "UpdateChecker"),
+                ByteCountFormatter.string(fromByteCount: progress.bytesWritten, countStyle: .file),
+                ByteCountFormatter.string(fromByteCount: progress.totalBytesExpected ?? progress.bytesWritten, countStyle: .file)
+            )
+        } else {
+            progressIndicator.isIndeterminate = true
+            progressIndicator.startAnimation(nil)
+            progressDetailLabel.stringValue = String(
+                format: L10n.tr("%@ downloaded", fallback: "%@ downloaded", table: "UpdateChecker"),
+                ByteCountFormatter.string(fromByteCount: progress.bytesWritten, countStyle: .file)
+            )
+        }
+    }
+
+    func finishDownload(destinationURL: URL, release: GitHubRelease, didOpen: Bool) {
+        currentRelease = release
+        isDownloadActive = false
+        progressIndicator.stopAnimation(nil)
+        progressContainer.isHidden = true
+
+        statusLabel.objectValue = destinationURL.path
+        statusLabel.stringValue = didOpen
+            ? String(
+                format: tr("Remora %@ was downloaded and opened. Follow the system prompts to finish updating.\n\n%@"),
+                release.version,
+                destinationURL.path
+            )
+            : String(
+                format: tr("Remora %@ was downloaded, but macOS could not open it automatically.\n\n%@"),
+                release.version,
+                destinationURL.path
+            )
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.isHidden = false
+
+        primaryButton.title = tr("Reveal in Finder")
+        primaryButton.action = #selector(handleRevealInFinder)
+        primaryButton.isEnabled = true
+        releaseButton.isEnabled = true
+        laterButton.title = tr("Close")
+    }
+
+    func failDownload(error: Error, release: GitHubRelease) {
+        currentRelease = release
+        isDownloadActive = false
+        progressIndicator.stopAnimation(nil)
+        progressContainer.isHidden = true
+
+        statusLabel.objectValue = nil
+        statusLabel.stringValue = String(
+            format: tr("Remora could not download version %@.\n\n%@"),
+            release.version,
+            error.localizedDescription
+        )
+        statusLabel.textColor = .systemRed
+        statusLabel.isHidden = false
+
+        primaryButton.title = currentRelease.downloadAsset.map(UpdateChecker.primaryActionTitle(for:)) ?? tr("View Release")
+        primaryButton.action = #selector(handlePrimaryAction)
+        primaryButton.isEnabled = true
+        releaseButton.isEnabled = true
+        laterButton.title = tr("Close")
     }
 
     private func configureContent(currentVersion: String, messageText: String) {
@@ -930,14 +1060,35 @@ private final class UpdateAvailableWindowController: NSWindowController, NSWindo
         webView.allowsBackForwardNavigationGestures = false
         webView.allowsMagnification = false
         webView.isInspectable = false
-        webView.loadHTMLString(
-            release.renderedReleaseNotesHTML
-                ?? UpdateChecker.fallbackReleaseNotesHTML(
-                    markdown: release.releaseNotes ?? tr("No release notes were provided for this release."),
-                    releaseURL: release.releaseURL
-                ),
-            baseURL: release.releaseURL
-        )
+
+        progressTitleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        progressTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        progressDetailLabel.font = .systemFont(ofSize: 12)
+        progressDetailLabel.textColor = .secondaryLabelColor
+        progressDetailLabel.lineBreakMode = .byTruncatingMiddle
+        progressDetailLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        progressIndicator.style = .bar
+        progressIndicator.minValue = 0
+        progressIndicator.maxValue = 1
+        progressIndicator.usesThreadedAnimation = true
+        progressIndicator.translatesAutoresizingMaskIntoConstraints = false
+
+        progressContainer.orientation = .vertical
+        progressContainer.alignment = .leading
+        progressContainer.spacing = 8
+        progressContainer.translatesAutoresizingMaskIntoConstraints = false
+        progressContainer.addArrangedSubview(progressTitleLabel)
+        progressContainer.addArrangedSubview(progressDetailLabel)
+        progressContainer.addArrangedSubview(progressIndicator)
+        progressContainer.isHidden = true
+
+        statusLabel.font = .systemFont(ofSize: 12)
+        statusLabel.lineBreakMode = .byWordWrapping
+        statusLabel.maximumNumberOfLines = 0
+        statusLabel.isHidden = true
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let buttonRow = NSStackView()
         buttonRow.orientation = .horizontal
@@ -972,6 +1123,8 @@ private final class UpdateAvailableWindowController: NSWindowController, NSWindo
         root.addArrangedSubview(topRow)
         root.addArrangedSubview(notesTitleLabel)
         root.addArrangedSubview(notesContainer)
+        root.addArrangedSubview(progressContainer)
+        root.addArrangedSubview(statusLabel)
         root.addArrangedSubview(buttonRow)
 
         NSLayoutConstraint.activate([
@@ -994,7 +1147,10 @@ private final class UpdateAvailableWindowController: NSWindowController, NSWindo
             primaryButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
             releaseButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 120),
             laterButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 96),
+            progressIndicator.widthAnchor.constraint(equalTo: progressContainer.widthAnchor),
         ])
+
+        applyReleaseContent()
     }
 
     private func configureButton(
@@ -1021,102 +1177,31 @@ private final class UpdateAvailableWindowController: NSWindowController, NSWindo
             window.appearance = nil
         }
     }
-}
 
-@MainActor
-private final class UpdateDownloadProgressWindowController: NSWindowController {
-    private let titleLabel = NSTextField(labelWithString: "")
-    private let detailLabel = NSTextField(labelWithString: "")
-    private let progressIndicator = NSProgressIndicator()
+    private func applyReleaseContent() {
+        window?.title = tr("Update available")
+        titleLabel.stringValue = tr("Update available")
+        messageLabel.stringValue = currentMessageText
+        statusLabel.objectValue = nil
+        statusLabel.stringValue = ""
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.isHidden = true
+        progressContainer.isHidden = true
 
-    init(asset: GitHubReleaseAsset, release: GitHubRelease) {
-        let contentView = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 116))
-        let window = NSWindow(
-            contentRect: contentView.frame,
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = L10n.tr("Downloading Update", fallback: "Downloading Update", table: "UpdateChecker")
-        window.contentView = contentView
-        window.isReleasedWhenClosed = false
-        window.level = .floating
-
-        super.init(window: window)
-
-        titleLabel.stringValue = String(
-            format: L10n.tr("Downloading Remora %@", fallback: "Downloading Remora %@", table: "UpdateChecker"),
-            release.version
-        )
-        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        titleLabel.lineBreakMode = .byTruncatingTail
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        detailLabel.stringValue = asset.name
-        detailLabel.font = .systemFont(ofSize: 12)
-        detailLabel.textColor = .secondaryLabelColor
-        detailLabel.lineBreakMode = .byTruncatingMiddle
-        detailLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        progressIndicator.isIndeterminate = true
-        progressIndicator.style = .bar
-        progressIndicator.minValue = 0
-        progressIndicator.maxValue = 1
-        progressIndicator.usesThreadedAnimation = true
-        progressIndicator.translatesAutoresizingMaskIntoConstraints = false
-        progressIndicator.startAnimation(nil)
-
-        contentView.addSubview(titleLabel)
-        contentView.addSubview(detailLabel)
-        contentView.addSubview(progressIndicator)
-
-        NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            titleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            titleLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
-
-            detailLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-            detailLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
-            detailLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-
-            progressIndicator.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-            progressIndicator.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
-            progressIndicator.topAnchor.constraint(equalTo: detailLabel.bottomAnchor, constant: 14),
-            progressIndicator.heightAnchor.constraint(equalToConstant: 14),
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    func update(_ progress: UpdateDownloadProgress) {
-        if let fraction = progress.fractionCompleted {
-            progressIndicator.stopAnimation(nil)
-            progressIndicator.isIndeterminate = false
-            progressIndicator.doubleValue = fraction
-            detailLabel.stringValue = String(
-                format: L10n.tr(
-                    "%@ of %@ downloaded",
-                    fallback: "%@ of %@ downloaded",
-                    table: "UpdateChecker"
+        webView.loadHTMLString(
+            currentRelease.renderedReleaseNotesHTML
+                ?? UpdateChecker.fallbackReleaseNotesHTML(
+                    markdown: currentRelease.releaseNotes ?? tr("No release notes were provided for this release."),
+                    releaseURL: currentRelease.releaseURL
                 ),
-                ByteCountFormatter.string(fromByteCount: progress.bytesWritten, countStyle: .file),
-                ByteCountFormatter.string(fromByteCount: progress.totalBytesExpected ?? progress.bytesWritten, countStyle: .file)
-            )
-        } else {
-            progressIndicator.isIndeterminate = true
-            progressIndicator.startAnimation(nil)
-            detailLabel.stringValue = String(
-                format: L10n.tr(
-                    "%@ downloaded",
-                    fallback: "%@ downloaded",
-                    table: "UpdateChecker"
-                ),
-                ByteCountFormatter.string(fromByteCount: progress.bytesWritten, countStyle: .file)
-            )
-        }
+            baseURL: currentRelease.releaseURL
+        )
+
+        primaryButton.title = currentRelease.downloadAsset.map(UpdateChecker.primaryActionTitle(for:)) ?? tr("View Release")
+        primaryButton.action = #selector(handlePrimaryAction)
+        primaryButton.isEnabled = true
+        releaseButton.isEnabled = true
+        laterButton.title = tr("Later")
     }
 }
 
