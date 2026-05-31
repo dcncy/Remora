@@ -7,6 +7,30 @@ description: Remora 版本更新历史
 
 ## [Unreleased]
 
+## [v0.17.2] - 2026-05-31
+
+### English
+
+#### Changed
+
+- Improved the in-app update window so release notes rendering and download progress feedback behave more clearly during upgrade flows.
+- Restored standard macOS text-editing shortcuts by removing app-level overrides that could interfere with expected editing behavior.
+
+#### Fixed
+
+- Fixed the remote text editor save-state tracking so edited documents no longer appear stale after a successful save cycle.
+
+### 中文
+
+#### 变更
+
+- 优化了应用内更新窗口，让更新说明展示和下载进度反馈在升级流程中更清晰稳定。
+- 移除了应用层对标准文本编辑快捷键的覆盖，恢复更符合 macOS 预期的编辑行为。
+
+#### 修复
+
+- 修复了远程文本编辑器的保存状态跟踪问题，文件成功保存后不再错误地显示为仍有未保存改动。
+
 ## [v0.17.1] - 2026-05-14
 
 ### English
