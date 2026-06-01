@@ -208,9 +208,19 @@ struct FileManagerPanelView: View {
         flattenVisibleRemoteTreeNodes(from: remoteTreeRoot)
     }
 
-    private var currentBreadcrumbs: [String] {
+    private var currentBreadcrumbs: [(title: String, path: String)] {
         let components = pathComponents(for: viewModel.remoteDirectoryPath)
-        return components.isEmpty ? [tr("Root")] : [tr("Root")] + components
+        guard !components.isEmpty else {
+            return [(title: tr("Root"), path: "/")]
+        }
+
+        var breadcrumbs: [(title: String, path: String)] = [(title: tr("Root"), path: "/")]
+        var currentPath = ""
+        for component in components {
+            currentPath += "/\(component)"
+            breadcrumbs.append((title: component, path: currentPath))
+        }
+        return breadcrumbs
     }
 
     private var rootContent: some View {
@@ -218,8 +228,10 @@ struct FileManagerPanelView: View {
             HSplitView {
                 remoteSidebar
                     .frame(minWidth: 220, idealWidth: 250, maxWidth: 320)
+                    .padding(.trailing, 6)
 
                 remotePanel
+                    .padding(.leading, 6)
                     .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .frame(minHeight: 150, maxHeight: .infinity, alignment: .top)
@@ -344,6 +356,9 @@ struct FileManagerPanelView: View {
             },
             onAddCurrentQuickPath: {
                 beginAddQuickPathFromCurrentDirectory()
+            },
+            onAddQuickPathForDirectory: { path in
+                beginAddQuickPath(for: path)
             },
             onRenameQuickPath: { quickPath in
                 beginRenameQuickPathFromSidebar(quickPath)
@@ -1503,8 +1518,12 @@ struct FileManagerPanelView: View {
     }
 
     private func beginAddQuickPathFromCurrentDirectory() {
-        quickPathAddNameDraft = defaultQuickPathName(for: viewModel.remoteDirectoryPath)
-        quickPathAddPathDraft = viewModel.remoteDirectoryPath
+        beginAddQuickPath(for: viewModel.remoteDirectoryPath)
+    }
+
+    private func beginAddQuickPath(for path: String) {
+        quickPathAddNameDraft = defaultQuickPathName(for: path)
+        quickPathAddPathDraft = path
         isQuickPathAddSheetPresented = true
     }
 

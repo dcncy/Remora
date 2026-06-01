@@ -258,13 +258,14 @@ struct FileManagerRemoteSidebarView: View {
     let remoteTreeRoot: FileManagerRemoteTreeNode
     let visibleRemoteTreeNodes: [FileManagerRemoteTreeNode]
     let selectedItem: FileManagerRemoteSidebarItem
-    let currentBreadcrumbs: [String]
+    let currentBreadcrumbs: [(title: String, path: String)]
     let onSelectRoot: () -> Void
     let onSelectQuickPath: (HostQuickPath) -> Void
     let onSelectDirectory: (String) -> Void
     let onToggleDirectory: (String) -> Void
     let onManageQuickPaths: () -> Void
     let onAddCurrentQuickPath: () -> Void
+    let onAddQuickPathForDirectory: (String) -> Void
     let onRenameQuickPath: (HostQuickPath) -> Void
     let onDeleteQuickPath: (HostQuickPath) -> Void
     let onReorderQuickPaths: ([UUID]) -> Void
@@ -313,10 +314,15 @@ struct FileManagerRemoteSidebarView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
                     ForEach(Array(currentBreadcrumbs.enumerated()), id: \.offset) { index, crumb in
-                        Text(crumb)
-                            .font(.system(size: 11, weight: index + 1 == currentBreadcrumbs.count ? .semibold : .regular, design: .monospaced))
-                            .foregroundStyle(index + 1 == currentBreadcrumbs.count ? VisualStyle.textPrimary : VisualStyle.textSecondary)
-                            .lineLimit(1)
+                        Button {
+                            onSelectDirectory(crumb.path)
+                        } label: {
+                            Text(crumb.title)
+                                .font(.system(size: 11, weight: index + 1 == currentBreadcrumbs.count ? .semibold : .regular, design: .monospaced))
+                                .foregroundStyle(index + 1 == currentBreadcrumbs.count ? VisualStyle.textPrimary : VisualStyle.textSecondary)
+                                .lineLimit(1)
+                        }
+                        .buttonStyle(.plain)
 
                         if index + 1 < currentBreadcrumbs.count {
                             Image(systemName: "chevron.right")
@@ -327,10 +333,6 @@ struct FileManagerRemoteSidebarView: View {
                 }
             }
 
-            Text(remoteDirectoryPath)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(VisualStyle.textSecondary)
-                .lineLimit(1)
         }
         .padding(.horizontal, 10)
         .padding(.top, 10)
@@ -454,14 +456,17 @@ struct FileManagerRemoteSidebarView: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier(accessibilityID)
                     .contextMenu {
-                        contextMenuButton(tr("Refresh"), systemImage: ContextMenuIconCatalog.refresh) {
-                            onRefreshDirectory(node.path)
-                        }
-                        contextMenuButton(tr("Copy Path"), systemImage: ContextMenuIconCatalog.copyPath) {
-                            onCopyDirectoryPath(node.path)
-                        }
+                    contextMenuButton(tr("Refresh"), systemImage: ContextMenuIconCatalog.refresh) {
+                        onRefreshDirectory(node.path)
+                    }
+                    contextMenuButton(tr("Add current path"), systemImage: "bookmark.badge.plus") {
+                        onAddQuickPathForDirectory(node.path)
+                    }
+                    contextMenuButton(tr("Copy Path"), systemImage: ContextMenuIconCatalog.copyPath) {
+                        onCopyDirectoryPath(node.path)
                     }
                 }
+            }
             }
         }
     }
