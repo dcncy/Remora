@@ -27,61 +27,42 @@ extension ContentView {
         splitVisibility = splitVisibility == .detailOnly ? .all : .detailOnly
     }
 
-    func normalizeBottomPanelVisibility() {
-        bottomPanelVisibility.normalize(fileManagerAvailable: shouldShowFileManager)
-    }
-
-    func toggleWorkspaceFocusMode(_ target: WorkspaceFocusMode) {
-        if workspaceFocusMode == target {
-            exitWorkspaceFocusMode()
+    func toggleTerminalFocusMode() {
+        if isTerminalFocusMode {
+            exitTerminalFocusMode()
         } else {
-            enterWorkspaceFocusMode(target)
+            enterTerminalFocusMode()
         }
     }
 
-    func enterWorkspaceFocusMode(_ target: WorkspaceFocusMode) {
-        guard target != .none else {
-            exitWorkspaceFocusMode()
-            return
-        }
-        guard canEnterWorkspaceFocusMode(target) else { return }
+    func enterTerminalFocusMode() {
+        guard workspace.activePane != nil else { return }
 
-        if !workspaceFocusMode.isActive {
+        if !isTerminalFocusMode {
             splitVisibilityBeforeFocusMode = splitVisibility
         }
 
-        workspaceFocusMode = target
+        isTerminalFocusMode = true
         splitVisibility = .detailOnly
     }
 
-    func exitWorkspaceFocusMode() {
-        workspaceFocusMode = .none
+    func exitTerminalFocusMode() {
+        isTerminalFocusMode = false
         if let previousVisibility = splitVisibilityBeforeFocusMode {
             splitVisibility = previousVisibility
         }
         splitVisibilityBeforeFocusMode = nil
     }
 
-    func normalizeWorkspaceFocusMode() {
-        guard workspaceFocusMode.isActive else { return }
-        guard canEnterWorkspaceFocusMode(workspaceFocusMode) else {
-            exitWorkspaceFocusMode()
+    func normalizeTerminalFocusMode() {
+        guard isTerminalFocusMode else { return }
+        guard workspace.activePane != nil else {
+            exitTerminalFocusMode()
             return
         }
 
         if splitVisibility != .detailOnly {
             splitVisibility = .detailOnly
-        }
-    }
-
-    func canEnterWorkspaceFocusMode(_ target: WorkspaceFocusMode) -> Bool {
-        switch target {
-        case .none:
-            return true
-        case .terminal:
-            return workspace.activePane != nil
-        case .bottomPanel:
-            return shouldShowFileManager && !workspace.tabs.isEmpty
         }
     }
 
@@ -705,10 +686,6 @@ extension ContentView {
         }
     }
 
-    func runQuickPath(_ quickPath: HostQuickPath) {
-        fileTransfer.navigateRemote(to: quickPath.path)
-    }
-
     func addCurrentPathToQuickPaths(_ currentPath: String, hostID: UUID) {
         let normalized = currentPath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
@@ -819,7 +796,6 @@ extension ContentView {
         guard let tabID = workspace.activeTabID else { return }
         workspace.selectTab(tabID)
         workspace.connectActivePane(host: host, template: nil)
-        bootstrapFileManagerBindingForActiveRuntime()
         hostCatalog.markConnected(hostID: host.id)
     }
 
@@ -842,7 +818,6 @@ extension ContentView {
 
         workspace.selectTab(tabID)
         runtime.reconnectSSHSession()
-        bootstrapFileManagerBindingForActiveRuntime()
         hostCatalog.markConnected(hostID: host.id)
     }
 
@@ -861,29 +836,7 @@ extension ContentView {
         guard let newTabID = workspace.activeTabID else { return }
         workspace.selectTab(newTabID)
         workspace.connectActivePane(host: host, template: nil)
-        bootstrapFileManagerBindingForActiveRuntime()
         hostCatalog.markConnected(hostID: host.id)
-    }
-
-    func refreshOrReconnectFileManagerForActivePane() {
-        guard let activeTabID = workspace.activeTabID,
-              let runtime = workspace.activePane?.runtime
-        else {
-            fileTransfer.performContextAction(.refresh)
-            return
-        }
-
-        let decision = SSHRefreshActionDecision.resolve(
-            connectionState: runtime.connectionState,
-            hasReconnectableHost: runtime.reconnectableSSHHost != nil
-        )
-
-        switch decision {
-        case .refresh:
-            fileTransfer.performContextAction(.refresh)
-        case .reconnect:
-            reconnectSession(activeTabID)
-        }
     }
 
     func openSettingsAndFocusDownloadPath() {
@@ -939,80 +892,22 @@ extension ContentView {
         )
     }
 
-    func syncFileManagerSFTPBinding() {
-        guard let activeTabID = workspace.activeTabID,
-              let activePane = workspace.activePane
-        else {
-            bindDisconnectedSFTPIfNeeded(bindingKey: "tab:none|pane:none|disconnected")
-            return
-        }
-        let runtime = activePane.runtime
-
-        if runtime.connectionMode == .ssh, let host = runtime.connectedSSHHost {
-            let bindingKey = Self.fileManagerBindingKey(
-                tabID: activeTabID,
-                paneID: activePane.id,
-                host: host
-            )
-            guard fileManagerSFTPBindingKey != bindingKey else { return }
-            fileManagerSFTPBindingKey = bindingKey
-            fileTransfer.bindSFTPClient(
-                SystemSFTPClient(host: host),
-                bindingKey: bindingKey,
-                initialRemoteDirectory: runtime.workingDirectory ?? "/"
-            )
-            return
-        }
-
-        // Keep current binding while SSH runtime is transitioning, then retry binding.
-        if runtime.connectionMode == .ssh,
-           runtime.connectionState == "Connecting"
-            || runtime.connectionState.hasPrefix("Waiting")
-            || runtime.connectionState.hasPrefix("Connected")
-        {
-            return
-        }
-
-        let disconnectedBindingKey = Self.fileManagerDisconnectedBindingKey(
-            tabID: activeTabID,
-            paneID: activePane.id
-        )
-        bindDisconnectedSFTPIfNeeded(bindingKey: disconnectedBindingKey)
-    }
-
-    func bindDisconnectedSFTPIfNeeded(bindingKey: String) {
-        guard fileManagerSFTPBindingKey != bindingKey else { return }
-        fileManagerSFTPBindingKey = bindingKey
-        fileTransfer.bindSFTPClient(
-            DisconnectedSFTPClient(),
-            bindingKey: bindingKey,
-            initialRemoteDirectory: "/"
-        )
-    }
-
-    func bootstrapFileManagerBindingForActiveRuntime() {
-        fileManagerSFTPBootstrapTask?.cancel()
-        guard let runtime = workspace.activePane?.runtime else { return }
-        let runtimeID = ObjectIdentifier(runtime)
-
-        fileManagerSFTPBootstrapTask = Task {
-            for _ in 0 ..< 160 {
-                try? await Task.sleep(for: .milliseconds(150))
-                guard !Task.isCancelled else { return }
-
-                let completed: Bool = await MainActor.run {
-                    guard let currentRuntime = workspace.activePane?.runtime else { return true }
-                    guard ObjectIdentifier(currentRuntime) == runtimeID else { return true }
-
-                    syncFileManagerSFTPBinding()
-                    return currentRuntime.connectionMode != .ssh || currentRuntime.connectedSSHHost != nil
-                }
-
-                if completed {
-                    return
-                }
+    func openFileManagerWorkspace(for host: RemoraCore.Host, runtime: TerminalRuntime) {
+        hostCatalog.markConnected(hostID: host.id)
+        fileManagerWorkspaceWindowManager.present(
+            host: host,
+            runtime: runtime,
+            hostCatalog: hostCatalog,
+            onManageQuickPaths: { hostID in
+                beginManageQuickPaths(for: hostID)
+            },
+            onAddCurrentQuickPath: { currentPath, hostID in
+                addCurrentPathToQuickPaths(currentPath, hostID: hostID)
+            },
+            onOpenDownloadSettings: {
+                openSettingsAndFocusDownloadPath()
             }
-        }
+        )
     }
 
     func openDockerWorkspace(for host: RemoraCore.Host, runtime: TerminalRuntime) {
@@ -1036,7 +931,6 @@ extension ContentView {
         guard let tabID = workspace.activeTabID else { return }
         workspace.selectTab(tabID)
         workspace.connectActivePane(host: host, template: nil)
-        bootstrapFileManagerBindingForActiveRuntime()
         hostCatalog.markConnected(hostID: host.id)
 
         let runtimeID = workspace.activePane.map { ObjectIdentifier($0.runtime) }
@@ -1062,23 +956,4 @@ extension ContentView {
         }
     }
 
-    static func sftpHostSignature(for host: RemoraCore.Host) -> String {
-        [
-            host.id.uuidString,
-            host.address,
-            "\(host.port)",
-            host.username,
-            host.auth.method.rawValue,
-            host.auth.keyReference ?? "",
-            host.auth.passwordReference ?? "",
-        ].joined(separator: "|")
-    }
-
-    static func fileManagerBindingKey(tabID: UUID, paneID: UUID, host: RemoraCore.Host) -> String {
-        "tab:\(tabID.uuidString)|pane:\(paneID.uuidString)|ssh:\(sftpHostSignature(for: host))"
-    }
-
-    static func fileManagerDisconnectedBindingKey(tabID: UUID, paneID: UUID) -> String {
-        "tab:\(tabID.uuidString)|pane:\(paneID.uuidString)|disconnected"
-    }
 }

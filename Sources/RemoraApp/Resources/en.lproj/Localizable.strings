@@ -6,8 +6,6 @@
 "Session" = "Session";
 "Tagging" = "Tagging";
 "File Manager" = "File Manager";
-"Focus File Manager" = "Focus File Manager";
-"Exit File Manager Focus" = "Exit File Manager Focus";
 "Focus Terminal" = "Focus Terminal";
 "Exit Terminal Focus" = "Exit Terminal Focus";
 "Application" = "Application";
@@ -729,4 +727,6 @@
 "Focus Bottom Panel" = "Focus Bottom Panel";
 "Exit Bottom Panel Focus" = "Exit Bottom Panel Focus";
 "Open Docker Workspace" = "Open Docker Workspace";
+"Open File Manager Workspace" = "Open File Manager Workspace";
+"%@ - File Manager" = "%@ - File Manager";
 "%@ - Docker" = "%@ - Docker";

@@ -15,10 +15,9 @@ struct ContentView: View {
     @Environment(\.openURL) var openURL
     @StateObject var workspace = WorkspaceViewModel()
     @StateObject var hostCatalog = HostCatalogStore()
-    @StateObject var fileTransfer = FileTransferViewModel()
-    @StateObject var directorySyncBridge = TerminalDirectorySyncBridge()
     @StateObject var serverMetricsCenter = ServerMetricsCenter()
     @StateObject var serverStatusWindowManager = ServerStatusWindowManager()
+    @StateObject var fileManagerWorkspaceWindowManager = FileManagerWorkspaceWindowManager()
     @StateObject var dockerWorkspaceWindowManager = DockerWorkspaceWindowManager()
     @StateObject var portForwardCenter = PortForwardCenter()
     @EnvironmentObject var extensionScriptStore: ExtensionScriptAppStore
@@ -31,8 +30,8 @@ struct ContentView: View {
     @State var selectedTemplateID: UUID?
     @State var splitVisibility: NavigationSplitViewVisibility = .all
     @State var splitVisibilityBeforeFocusMode: NavigationSplitViewVisibility?
-    @State var bottomPanelVisibility = BottomPanelVisibilityState(terminal: true, fileManager: false)
-    @State var workspaceFocusMode: WorkspaceFocusMode = .none
+    @State var isTerminalCollapsed = false
+    @State var isTerminalFocusMode = false
     @State var collapsedGroupNames: Set<String> = []
     @RemoraStored(\.collapsedGroupNames) var persistedCollapsedGroupNames: [String]
     @State var isGroupEditorSheetPresented = false
@@ -83,8 +82,6 @@ struct ContentView: View {
     @State var portForwardRemoteAddressDraft = "127.0.0.1"
     @State var portForwardRemotePortDraft = "80"
     @State var portForwardValidationMessage: String?
-    @State var fileManagerSFTPBindingKey = "disconnected"
-    @State var fileManagerSFTPBootstrapTask: Task<Void, Never>?
     @State var hoveredSessionMetricsTooltip: HoveredSessionMetricsTooltip?
     @State var hoveredSessionMetricsTooltipSize: CGSize = .zero
     @RemoraStored(\.connectionInfoPasswordCopyMutedUntilEpoch)
@@ -199,7 +196,7 @@ struct ContentView: View {
                     runtimeID: nil,
                     connectionMode: nil,
                     connectionState: "Disconnected",
-                    hostSignature: nil
+                    hostID: nil
                 )
             )
             .eraseToAnyPublisher()
@@ -215,7 +212,7 @@ struct ContentView: View {
                 runtimeID: ObjectIdentifier(runtime),
                 connectionMode: mode,
                 connectionState: state,
-                hostSignature: host.map(Self.sftpHostSignature(for:))
+                hostID: host?.id
             )
         }
         .removeDuplicates()
@@ -252,37 +249,21 @@ struct ContentView: View {
                     firstPane.runtime.connectLocalShell()
                 }
                 syncServerMetricsConfiguration()
-                RuntimeConnectionSyncCoordinator.bindRuntimeDrivenServices(
-                    fileTransfer: fileTransfer,
-                    directorySyncBridge: directorySyncBridge,
-                    activeRuntime: workspace.activePane?.runtime,
-                    syncFileManagerBinding: syncFileManagerSFTPBinding,
-                    syncServerMetricsTracking: syncServerMetricsTracking
-                )
+                syncServerMetricsTracking()
             }
             .onChange(of: selectedHostID) {
                 selectedTemplateID = availableTemplates.first?.id
             }
             .onChange(of: workspace.activeTabID) {
-                normalizeWorkspaceFocusMode()
-                RuntimeConnectionSyncCoordinator.attachActiveRuntime(
-                    workspace.activePane?.runtime,
-                    directorySyncBridge: directorySyncBridge,
-                    syncFileManagerBinding: syncFileManagerSFTPBinding,
-                    syncServerMetricsTracking: syncServerMetricsTracking
-                )
+                normalizeTerminalFocusMode()
+                syncServerMetricsTracking()
             }
             .onChange(of: workspace.activePaneByTab) {
-                normalizeWorkspaceFocusMode()
-                RuntimeConnectionSyncCoordinator.attachActiveRuntime(
-                    workspace.activePane?.runtime,
-                    directorySyncBridge: directorySyncBridge,
-                    syncFileManagerBinding: syncFileManagerSFTPBinding,
-                    syncServerMetricsTracking: syncServerMetricsTracking
-                )
+                normalizeTerminalFocusMode()
+                syncServerMetricsTracking()
             }
             .onChange(of: splitVisibility) {
-                normalizeWorkspaceFocusMode()
+                normalizeTerminalFocusMode()
             }
 
         let commandContent = lifecycleContent
@@ -309,14 +290,11 @@ struct ContentView: View {
 
         let syncedContent = commandContent
             .onReceive(activeRuntimeConnectionStatePublisher) { _ in
-                normalizeWorkspaceFocusMode()
-                RuntimeConnectionSyncCoordinator.syncRuntimeDrivenServices(
-                    syncFileManagerBinding: syncFileManagerSFTPBinding,
-                    syncServerMetricsTracking: syncServerMetricsTracking
-                )
+                normalizeTerminalFocusMode()
+                syncServerMetricsTracking()
             }
             .onReceive(serverMetricsTrackingTimer) { _ in
-                RuntimeConnectionSyncCoordinator.syncMetricsTracking(syncServerMetricsTracking)
+                syncServerMetricsTracking()
             }
             .onChange(of: hostCatalog.hosts) {
                 if let selectedHostID, hostCatalog.host(id: selectedHostID) != nil {
@@ -343,11 +321,11 @@ struct ContentView: View {
 
         return syncedContent
             .animation(.spring(response: 0.28, dampingFraction: 0.86), value: workspace.activeTabID)
-            .animation(.spring(response: 0.32, dampingFraction: 0.84), value: bottomPanelVisibility)
-            .animation(.spring(response: 0.26, dampingFraction: 0.86), value: workspaceFocusMode)
+            .animation(.spring(response: 0.26, dampingFraction: 0.86), value: isTerminalFocusMode)
+            .animation(.spring(response: 0.22, dampingFraction: 0.84), value: isTerminalCollapsed)
             .onExitCommand {
-                guard workspaceFocusMode.isActive else { return }
-                exitWorkspaceFocusMode()
+                guard isTerminalFocusMode else { return }
+                exitTerminalFocusMode()
             }
             .task {
                 await UpdateChecker.shared.performAutomaticCheckIfNeeded()

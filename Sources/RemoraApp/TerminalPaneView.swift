@@ -23,6 +23,7 @@ struct TerminalPaneView: View {
     var onClose: () -> Void
     var onRunQuickCommand: (HostQuickCommand) -> Void
     var onManageQuickCommands: () -> Void
+    var onOpenFileManagerWorkspace: () -> Void
     var onOpenDockerWorkspace: () -> Void
     @RemoraStored(\.aiEnabled) private var aiEnabled: Bool
     @State private var smartAssistNotificationState = TerminalSmartAssistNotificationState()
@@ -83,6 +84,7 @@ struct TerminalPaneView: View {
         onClose: @escaping () -> Void = {},
         onRunQuickCommand: @escaping (HostQuickCommand) -> Void = { _ in },
         onManageQuickCommands: @escaping () -> Void = {},
+        onOpenFileManagerWorkspace: @escaping () -> Void = {},
         onOpenDockerWorkspace: @escaping () -> Void = {}
     ) {
         self.pane = pane
@@ -100,6 +102,7 @@ struct TerminalPaneView: View {
         self.onClose = onClose
         self.onRunQuickCommand = onRunQuickCommand
         self.onManageQuickCommands = onManageQuickCommands
+        self.onOpenFileManagerWorkspace = onOpenFileManagerWorkspace
         self.onOpenDockerWorkspace = onOpenDockerWorkspace
     }
 
@@ -168,6 +171,18 @@ struct TerminalPaneView: View {
                 }
 
                 if runtime.connectionMode == .ssh {
+                    Button {
+                        onSelect()
+                        onOpenFileManagerWorkspace()
+                    } label: {
+                        Image(systemName: "folder")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(VisualStyle.textSecondary)
+                    .accessibilityLabel(tr("Open File Manager Workspace"))
+                    .accessibilityIdentifier("terminal-open-file-manager-workspace")
+
                     Button {
                         onSelect()
                         onOpenDockerWorkspace()

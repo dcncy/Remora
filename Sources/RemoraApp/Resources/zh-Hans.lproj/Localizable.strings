@@ -6,8 +6,6 @@
 "Session" = "会话";
 "Tagging" = "标签";
 "File Manager" = "文件管理";
-"Focus File Manager" = "聚焦文件管理";
-"Exit File Manager Focus" = "退出文件管理聚焦";
 "Focus Terminal" = "聚焦终端";
 "Exit Terminal Focus" = "退出终端聚焦";
 "Application" = "应用";
@@ -725,4 +723,6 @@
 "Focus Bottom Panel" = "聚焦底部面板";
 "Exit Bottom Panel Focus" = "退出底部面板聚焦";
 "Open Docker Workspace" = "打开 Docker 工作区";
+"Open File Manager Workspace" = "打开文件管理工作区";
+"%@ - File Manager" = "%@ - 文件管理";
 "%@ - Docker" = "%@ - Docker";

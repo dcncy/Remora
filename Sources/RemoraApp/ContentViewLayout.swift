@@ -382,21 +382,10 @@ extension ContentView {
 
     var detailWorkspace: some View {
         Group {
-            switch workspaceFocusMode {
-            case .none:
-                VStack(spacing: VisualStyle.panelSpacing) {
-                    sessionContainer
-                        .frame(maxWidth: .infinity, maxHeight: sessionShouldFillRemainingHeight ? .infinity : nil, alignment: .top)
-                    if !workspace.tabs.isEmpty, shouldShowFileManager {
-                        fileManagerDisclosure
-                    }
-                }
-
-            case .terminal:
+            if isTerminalFocusMode {
                 focusedTerminalWorkspace
-
-            case .bottomPanel:
-                focusedFileManagerWorkspace
+            } else {
+                sessionContainer
             }
         }
         .padding(VisualStyle.pagePadding)
@@ -470,40 +459,6 @@ extension ContentView {
         )
     }
 
-    var shouldShowFileManager: Bool {
-        workspace.activePane?.runtime.connectionMode == .ssh
-    }
-
-    var normalizedBottomPanelVisibility: BottomPanelVisibilityState {
-        var state = bottomPanelVisibility
-        state.normalize(fileManagerAvailable: shouldShowFileManager)
-        return state
-    }
-
-    var isTerminalPanelVisible: Bool {
-        normalizedBottomPanelVisibility.terminal
-    }
-
-    var isFileManagerPanelVisible: Bool {
-        normalizedBottomPanelVisibility.fileManager
-    }
-
-    var isTerminalFocusMode: Bool {
-        workspaceFocusMode == .terminal
-    }
-
-    var isFileManagerFocusMode: Bool {
-        workspaceFocusMode == .bottomPanel
-    }
-
-    var sessionShouldFillRemainingHeight: Bool {
-        normalizedBottomPanelVisibility.sessionShouldFillRemainingHeight(fileManagerAvailable: shouldShowFileManager)
-    }
-
-    var fileManagerShouldFillRemainingHeight: Bool {
-        normalizedBottomPanelVisibility.fileManagerShouldFillRemainingHeight(fileManagerAvailable: shouldShowFileManager)
-    }
-
     var sessionContainer: some View {
         VStack(spacing: 0) {
             if !workspace.tabs.isEmpty, !isTerminalFocusMode {
@@ -532,10 +487,9 @@ extension ContentView {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: sessionShouldFillRemainingHeight ? .infinity : nil, alignment: .top)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .glassCard(fill: VisualStyle.rightPanelBackground, border: VisualStyle.borderSoft, showsShadow: false)
-        .layoutPriority(sessionShouldFillRemainingHeight ? 1 : 0)
         .coordinateSpace(name: "session-container")
         .overlayPreferenceValue(SessionMetricsButtonAnchorPreferenceKey.self) { anchors in
             GeometryReader { proxy in
@@ -840,162 +794,9 @@ extension ContentView {
         }
     }
 
-    var fileManagerDisclosure: some View {
-        VStack(spacing: 0) {
-            fileManagerHeader(
-                showsDisclosure: true,
-                isExpanded: isFileManagerPanelVisible,
-                isFocusActive: isFileManagerFocusMode,
-                onToggleDisclosure: {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        bottomPanelVisibility.toggleFileManager(fileManagerAvailable: shouldShowFileManager)
-                    }
-                },
-                onToggleFocus: {
-                    toggleWorkspaceFocusMode(.bottomPanel)
-                }
-            )
-            .padding(.horizontal, 12)
-            .padding(.top, 5)
-            .padding(.bottom, 5)
-
-            if isFileManagerPanelVisible {
-                Divider()
-                    .overlay(VisualStyle.borderSoft)
-                fileManagerPanelContent
-                    .frame(minHeight: 280, maxHeight: fileManagerShouldFillRemainingHeight ? .infinity : 420, alignment: .top)
-                    .layoutPriority(fileManagerShouldFillRemainingHeight ? 1 : 0)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                    .padding(.bottom, 8)
-            }
-        }
-        .glassCard(fill: VisualStyle.rightPanelBackground, border: VisualStyle.borderSoft, showsShadow: false)
-        .frame(maxWidth: .infinity, maxHeight: fileManagerShouldFillRemainingHeight ? .infinity : nil, alignment: .top)
-        .layoutPriority(fileManagerShouldFillRemainingHeight ? 1 : 0)
-    }
-
     var focusedTerminalWorkspace: some View {
         sessionContainer
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    var focusedFileManagerWorkspace: some View {
-        VStack(spacing: 0) {
-            fileManagerHeader(
-                showsDisclosure: false,
-                isExpanded: true,
-                isFocusActive: true,
-                onToggleDisclosure: nil,
-                onToggleFocus: {
-                    toggleWorkspaceFocusMode(.bottomPanel)
-                }
-            )
-            .padding(.horizontal, 12)
-            .padding(.top, 5)
-            .padding(.bottom, 5)
-
-            Divider()
-                .overlay(VisualStyle.borderSoft)
-
-            fileManagerPanelContent
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            .padding(.bottom, 10)
-        }
-        .glassCard(fill: VisualStyle.rightPanelBackground, border: VisualStyle.borderSoft, showsShadow: false)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    var fileManagerPanelContent: some View {
-        let fileManagerHostID = workspace.activePane?.runtime.reconnectableSSHHost?.id
-        return FileManagerPanelView(
-            viewModel: fileTransfer,
-            quickPaths: hostCatalog.quickPaths(for: fileManagerHostID),
-            onRunQuickPath: { quickPath in
-                runQuickPath(quickPath)
-            },
-            onManageQuickPaths: {
-                guard let fileManagerHostID else { return }
-                beginManageQuickPaths(for: fileManagerHostID)
-            },
-            onAddCurrentQuickPath: { currentPath in
-                guard let fileManagerHostID else { return }
-                addCurrentPathToQuickPaths(currentPath, hostID: fileManagerHostID)
-            },
-            onRefreshRemote: {
-                refreshOrReconnectFileManagerForActivePane()
-            },
-            onEditDownloadPath: {
-                openSettingsAndFocusDownloadPath()
-            }
-        )
-    }
-
-    @ViewBuilder
-    func fileManagerHeader(
-        showsDisclosure: Bool,
-        isExpanded: Bool,
-        isFocusActive: Bool,
-        onToggleDisclosure: (() -> Void)?,
-        onToggleFocus: @escaping () -> Void
-    ) -> some View {
-        HStack(spacing: 8) {
-            if let onToggleDisclosure, showsDisclosure {
-                Button(action: onToggleDisclosure) {
-                    fileManagerHeaderTitle(disclosureState: isExpanded)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("file-manager-disclosure-toggle")
-            } else {
-                fileManagerHeaderTitle(disclosureState: nil)
-            }
-
-            panelFocusButton(
-                isActive: isFocusActive,
-                enterLabel: tr("Focus File Manager"),
-                exitLabel: tr("Exit File Manager Focus")
-            ) {
-                onToggleFocus()
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 24, alignment: .center)
-    }
-
-    func fileManagerHeaderTitle(disclosureState: Bool?) -> some View {
-        HStack(spacing: 8) {
-            if let disclosureState {
-                Image(systemName: disclosureState ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(VisualStyle.textSecondary)
-                    .frame(width: 14, height: 14, alignment: .center)
-            }
-
-            Label(tr("File Manager"), systemImage: "folder")
-                .panelTitleStyle()
-
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-        .contentShape(Rectangle())
-    }
-
-    func panelFocusButton(
-        isActive: Bool,
-        enterLabel: String,
-        exitLabel: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: isActive ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 24, height: 24, alignment: .center)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(VisualStyle.textSecondary)
-        .accessibilityLabel(isActive ? exitLabel : enterLabel)
     }
 
     var sidebarEmptyState: some View {
@@ -1028,7 +829,7 @@ extension ContentView {
         return TerminalPaneView(
             pane: pane,
             quickCommands: hostCatalog.quickCommands(for: hostID),
-            isContentVisible: isTerminalFocusMode ? true : isTerminalPanelVisible,
+            isContentVisible: isTerminalFocusMode ? true : !isTerminalCollapsed,
             isFocused: workspace.activePaneByTab[tabID] == pane.id,
             isInFocusMode: isTerminalFocusMode,
             canClose: (workspace.tab(id: tabID)?.panes.count ?? 0) > 1,
@@ -1037,11 +838,11 @@ extension ContentView {
             },
             onToggleCollapse: {
                 withAnimation(.easeInOut(duration: 0.22)) {
-                    bottomPanelVisibility.toggleTerminal(fileManagerAvailable: shouldShowFileManager)
+                    isTerminalCollapsed.toggle()
                 }
             },
             onToggleFocusMode: {
-                toggleWorkspaceFocusMode(.terminal)
+                toggleTerminalFocusMode()
             },
             onReconnect: {
                 reconnectSession(tabID)
@@ -1055,6 +856,10 @@ extension ContentView {
             onManageQuickCommands: {
                 guard let hostID else { return }
                 beginManageQuickCommands(for: hostID)
+            },
+            onOpenFileManagerWorkspace: {
+                guard let host = pane.runtime.reconnectableSSHHost else { return }
+                openFileManagerWorkspace(for: host, runtime: pane.runtime)
             },
             onOpenDockerWorkspace: {
                 guard let host = pane.runtime.reconnectableSSHHost else { return }
