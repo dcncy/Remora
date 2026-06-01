@@ -1,6 +1,8 @@
 import AppKit
 import RemoraCore
 
+// Primary native file manager browser implementation. New window-based file
+// manager work should be routed here instead of FileManagerPanelView.
 @MainActor
 final class FileManagerWindowSplitController: NSSplitViewController {
     private let sidebarController: FileManagerOutlineSidebarController
