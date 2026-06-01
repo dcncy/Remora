@@ -11,166 +11,6 @@ struct FileManagerPanelView: View {
         return parentPath.isEmpty ? "/" : parentPath
     }
 
-    private struct OperationToast: Identifiable, Equatable {
-        var id = UUID()
-        var message: String
-    }
-
-    private enum RemoteCreateKind {
-        case file
-        case directory
-
-        var title: String {
-            switch self {
-            case .file:
-                return tr("New File")
-            case .directory:
-                return tr("New Folder")
-            }
-        }
-
-        var defaultName: String {
-            switch self {
-            case .file:
-                return "untitled.txt"
-            case .directory:
-                return tr("New Folder")
-            }
-        }
-    }
-
-    private enum RemoteSortColumn: String {
-        case name
-        case permission
-        case date
-        case size
-        case kind
-    }
-
-    private struct RemoteListRowItem: Identifiable, Equatable {
-        var path: String
-        var displayName: String
-        var name: String
-        var parentPath: String
-        var size: Int64?
-        var permissions: UInt16?
-        var modifiedAt: Date?
-        var isDirectory: Bool
-        var permissionText: String
-        var modifiedAtText: String
-        var sizeText: String
-        var kindText: String
-        var sourceEntry: RemoteFileEntry?
-
-        var id: String { path }
-    }
-
-    private struct RemoteListPresentationCache {
-        var items: [RemoteListRowItem]
-        var paths: [String]
-        var itemsByPath: [String: RemoteListRowItem]
-
-        static let empty = RemoteListPresentationCache(items: [], paths: [], itemsByPath: [:])
-    }
-
-    private struct RemoteListRowView: View {
-        let item: RemoteListRowItem
-        let rowIndex: Int
-        let isSelected: Bool
-        let isHovered: Bool
-        let isDropTarget: Bool
-
-        var body: some View {
-            HStack(spacing: 10) {
-                HStack(spacing: 6) {
-                    Image(systemName: item.isDirectory ? "folder" : "doc")
-                        .foregroundStyle(secondaryTextColor)
-                    Text(item.displayName)
-                        .lineLimit(1)
-                }
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(primaryTextColor)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text(item.permissionText)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(secondaryTextColor)
-                    .lineLimit(1)
-                    .frame(width: 120, alignment: .leading)
-
-                Text(item.modifiedAtText)
-                    .font(.system(size: 13))
-                    .foregroundStyle(secondaryTextColor)
-                    .lineLimit(1)
-                    .frame(width: 170, alignment: .leading)
-
-                Text(item.sizeText)
-                    .font(.system(size: 13))
-                    .foregroundStyle(secondaryTextColor)
-                    .lineLimit(1)
-                    .frame(width: 90, alignment: .trailing)
-
-                Text(item.kindText)
-                    .font(.system(size: 13))
-                    .foregroundStyle(secondaryTextColor)
-                    .lineLimit(1)
-                    .frame(width: 90, alignment: .leading)
-            }
-            .overlay(alignment: .trailing) {
-                if isDropTarget {
-                    Image(systemName: "square.and.arrow.down.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color.accentColor)
-                        .padding(6)
-                        .background(
-                            Circle()
-                                .fill(Color.accentColor.opacity(0.12))
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
-                        )
-                        .padding(.trailing, 4)
-                        .transition(.scale(scale: 0.85).combined(with: .opacity))
-                        .help(tr("Drop target"))
-                }
-            }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 8)
-            .background(rowBackground)
-            .contentShape(Rectangle())
-        }
-
-        private var primaryTextColor: Color {
-            (isSelected || isDropTarget)
-                ? Color(nsColor: .alternateSelectedControlTextColor)
-                : VisualStyle.textPrimary
-        }
-
-        private var secondaryTextColor: Color {
-            (isSelected || isDropTarget)
-                ? Color(nsColor: .alternateSelectedControlTextColor).opacity(0.8)
-                : VisualStyle.textSecondary
-        }
-
-        private var rowBackground: Color {
-            if isSelected {
-                return Color.accentColor
-            }
-            if isDropTarget {
-                return Color.accentColor.opacity(0.24)
-            }
-            if isHovered {
-                return Color(nsColor: NSColor.alternatingContentBackgroundColors.first ?? .controlBackgroundColor)
-                    .opacity(0.9)
-            }
-            let stripe = rowIndex.isMultiple(of: 2)
-                ? NSColor.controlBackgroundColor
-                : NSColor.alternatingContentBackgroundColors.first ?? .controlBackgroundColor
-            return Color(nsColor: stripe)
-        }
-    }
-
     @ObservedObject var viewModel: FileTransferViewModel
     @RemoraStored(\.languageModeRawValue) private var languageModeRawValue: String
     var quickPaths: [HostQuickPath] = []
@@ -206,21 +46,31 @@ struct FileManagerPanelView: View {
     @State private var isUploadPanelPresented = false
     @State private var uploadTargetDirectory = "/"
     @State private var isCreateRemoteSheetPresented = false
-    @State private var createRemoteKind: RemoteCreateKind = .file
+    @State private var createRemoteKind: FileManagerRemoteCreateKind = .file
     @State private var createRemoteTargetDirectory = "/"
     @State private var createRemoteNameDraft = ""
     @State private var transferQueueOverlayState = TransferQueueOverlayState()
-    @State private var remoteSortColumn: RemoteSortColumn = .name
+    @State private var remoteSortColumn: FileManagerRemoteSortColumn = .name
     @State private var isRemoteSortAscending = true
     @State private var activeRemoteDropDirectoryPath: String?
     @State private var isRemoteListDropTargeted = false
-    @State private var operationToast: OperationToast?
+    @State private var operationToast: FileManagerOperationToast?
     @State private var toastHideTask: Task<Void, Never>?
     @State private var isRemoteSearchPresented = true
     @State private var remoteSearchDraft = ""
     @State private var remoteSearchScope: RemoteSearchScope = .currentDirectory
     @State private var remoteSearchDebounceTask: Task<Void, Never>?
-    @State private var remoteListPresentation = RemoteListPresentationCache.empty
+    @State private var remoteListPresentation = FileManagerRemoteListPresentationCache.empty
+    @State private var remoteTreeRoot = FileManagerRemoteTreeNode(
+        path: "/",
+        name: tr("Root"),
+        depth: 0,
+        isExpanded: true,
+        isLoading: false,
+        childrenLoaded: false,
+        children: []
+    )
+    @State private var selectedRemoteSidebarItem: FileManagerRemoteSidebarItem = .directory("/")
     @FocusState private var isRemoteSearchFieldFocused: Bool
 
     init(
@@ -333,7 +183,7 @@ struct FileManagerPanelView: View {
         return String(format: tr("Drop to upload to %@"), target)
     }
 
-    private var displayedRemoteItems: [RemoteListRowItem] {
+    private var displayedRemoteItems: [FileManagerRemoteListRowItem] {
         remoteListPresentation.items
     }
 
@@ -341,13 +191,26 @@ struct FileManagerPanelView: View {
         remoteListPresentation.paths
     }
 
+    private var visibleRemoteTreeNodes: [FileManagerRemoteTreeNode] {
+        flattenVisibleRemoteTreeNodes(from: remoteTreeRoot)
+    }
+
     private var rootContent: some View {
         VStack(spacing: 8) {
-            remotePanel
-                .frame(minHeight: 150, maxHeight: .infinity, alignment: .top)
+            HSplitView {
+                remoteSidebar
+                    .frame(minWidth: 220, idealWidth: 250, maxWidth: 320)
+
+                remotePanel
+                    .frame(minWidth: 520, maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+            .frame(minHeight: 150, maxHeight: .infinity, alignment: .top)
 
             remoteActionBar
         }
+        .animation(.easeInOut(duration: 0.16), value: remoteTreeRoot)
+        .animation(.easeInOut(duration: 0.2), value: selectedRemoteSidebarItem)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.remoteDirectoryPath)
         .animation(.easeInOut(duration: 0.2), value: viewModel.transferQueue.map(\.status))
         .animation(.easeInOut(duration: 0.2), value: transferQueueOverlayState)
         .overlay {
@@ -382,14 +245,23 @@ struct FileManagerPanelView: View {
         }
         .onAppear {
             remotePathDraft = viewModel.remoteDirectoryPath
+            selectedRemoteSidebarItem = .directory(viewModel.remoteDirectoryPath)
             rebuildDisplayedRemoteItems()
+            Task {
+                await loadInitialRemoteTreeIfNeeded()
+                await syncRemoteTreeSelection(to: viewModel.remoteDirectoryPath)
+            }
         }
         .onChange(of: viewModel.remoteDirectoryPath) {
             remotePathDraft = viewModel.remoteDirectoryPath
+            selectedRemoteSidebarItem = .directory(viewModel.remoteDirectoryPath)
             selectedRemotePaths.removeAll()
             selectionAnchorRemotePath = nil
             activeRemoteDropDirectoryPath = nil
             isRemoteListDropTargeted = false
+            Task {
+                await syncRemoteTreeSelection(to: viewModel.remoteDirectoryPath)
+            }
             if remoteSearchScope != .entireServer,
                !remoteSearchDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
@@ -398,6 +270,9 @@ struct FileManagerPanelView: View {
         }
         .onChange(of: viewModel.remoteEntries) {
             rebuildDisplayedRemoteItems()
+            Task {
+                await refreshVisibleTreeBranch()
+            }
         }
         .onChange(of: viewModel.remoteSearchResults) {
             rebuildDisplayedRemoteItems()
@@ -423,6 +298,30 @@ struct FileManagerPanelView: View {
         .onChange(of: remoteSearchScope) {
             scheduleRemoteSearch(immediate: true)
         }
+        )
+    }
+
+    private var remoteSidebar: some View {
+        FileManagerRemoteSidebarView(
+            remoteDirectoryPath: viewModel.remoteDirectoryPath,
+            quickPaths: quickPaths,
+            remoteTreeRoot: remoteTreeRoot,
+            visibleRemoteTreeNodes: visibleRemoteTreeNodes,
+            selectedItem: selectedRemoteSidebarItem,
+            onSelectRoot: {
+                selectedRemoteSidebarItem = .directory("/")
+                navigateToRoot()
+            },
+            onSelectQuickPath: { quickPath in
+                selectedRemoteSidebarItem = .quickPath(quickPath.id)
+                onRunQuickPath(quickPath)
+            },
+            onSelectDirectory: { path in
+                selectRemoteDirectory(path)
+            },
+            onToggleDirectory: { path in
+                toggleRemoteTreeNode(path)
+            }
         )
     }
 
@@ -540,7 +439,7 @@ struct FileManagerPanelView: View {
                     ForEach(Array(displayedRemoteItems.enumerated()), id: \.element.path) { rowIndex, item in
                         let isSelected = selectedRemotePaths.contains(item.path)
                         let isDropTarget = activeRemoteDropDirectoryPath == item.path
-                        RemoteListRowView(
+                        FileManagerRemoteListRowView(
                             item: item,
                             rowIndex: rowIndex,
                             isSelected: isSelected,
@@ -718,7 +617,7 @@ struct FileManagerPanelView: View {
 
     private func sortHeaderButton(
         _ title: String,
-        column: RemoteSortColumn,
+        column: FileManagerRemoteSortColumn,
         width: CGFloat?,
         alignment: Alignment
     ) -> some View {
@@ -1115,7 +1014,7 @@ struct FileManagerPanelView: View {
             }
 
             if searchStatus.isRunning, !searchStatus.activity.isEmpty {
-                RemoteSearchActivityTicker(activities: searchStatus.activity)
+                FileManagerRemoteSearchActivityTicker(activities: searchStatus.activity)
                     .accessibilityIdentifier("file-manager-search-activity")
             }
 
@@ -1371,7 +1270,7 @@ struct FileManagerPanelView: View {
     }
 
     @ViewBuilder
-    private func rowContextMenu(for item: RemoteListRowItem) -> some View {
+    private func rowContextMenu(for item: FileManagerRemoteListRowItem) -> some View {
         contextMenuButton(tr("Refresh"), systemImage: ContextMenuIconCatalog.refresh) {
             viewModel.performContextAction(.refresh)
         }
@@ -1673,7 +1572,7 @@ struct FileManagerPanelView: View {
         .accessibilityIdentifier(accessibilityIdentifier)
     }
 
-    private func handleRemoteRowTap(_ item: RemoteListRowItem) {
+    private func handleRemoteRowTap(_ item: FileManagerRemoteListRowItem) {
         let modifiers = NSApp.currentEvent?.modifierFlags ?? []
         let result = RemoteListSelection.applyClick(
             currentSelection: selectedRemotePaths,
@@ -1731,13 +1630,201 @@ struct FileManagerPanelView: View {
         selectionAnchorRemotePath = nil
     }
 
+    private func selectRemoteDirectory(_ path: String) {
+        selectedRemoteSidebarItem = .directory(path)
+        viewModel.navigateRemote(to: path)
+    }
+
+    private func toggleRemoteTreeNode(_ path: String) {
+        guard let node = nodeForPath(path, in: remoteTreeRoot) else { return }
+
+        if node.isExpanded {
+            remoteTreeRoot = updateNode(in: remoteTreeRoot, path: path) { node in
+                node.isExpanded = false
+            }
+            return
+        }
+
+        remoteTreeRoot = updateNode(in: remoteTreeRoot, path: path) { node in
+            node.isExpanded = true
+            if !node.childrenLoaded {
+                node.isLoading = true
+            }
+        }
+
+        if !node.childrenLoaded {
+            Task {
+                await loadTreeChildren(for: path)
+            }
+        }
+    }
+
+    private func loadInitialRemoteTreeIfNeeded() async {
+        if remoteTreeRoot.childrenLoaded {
+            return
+        }
+        await loadTreeChildren(for: remoteTreeRoot.path)
+    }
+
+    private func refreshVisibleTreeBranch() async {
+        guard let currentNode = nodeForPath(viewModel.remoteDirectoryPath, in: remoteTreeRoot),
+              currentNode.childrenLoaded
+        else {
+            return
+        }
+        await loadTreeChildren(for: currentNode.path, forceRefresh: true)
+    }
+
+    private func syncRemoteTreeSelection(to path: String) async {
+        let normalized = normalizeTreePath(path)
+        let components = pathComponents(for: normalized)
+        if components.isEmpty {
+            selectedRemoteSidebarItem = .directory("/")
+            return
+        }
+
+        var currentPath = "/"
+        for component in components {
+            if currentPath != "/" {
+                currentPath += "/"
+            }
+            currentPath += component
+
+            if nodeForPath(currentPath, in: remoteTreeRoot) == nil {
+                await loadTreeChildren(for: parentPath(of: currentPath) ?? "/", forceRefresh: false)
+            }
+
+            remoteTreeRoot = updateNode(in: remoteTreeRoot, path: parentPath(of: currentPath) ?? "/") { node in
+                node.isExpanded = true
+            }
+        }
+    }
+
+    private func loadTreeChildren(for path: String, forceRefresh: Bool = false) async {
+        let normalized = normalizeTreePath(path)
+
+        await MainActor.run {
+            remoteTreeRoot = updateNode(in: remoteTreeRoot, path: normalized) { node in
+                node.isExpanded = true
+                node.isLoading = true
+            }
+        }
+
+        do {
+            let entries = try await viewModel.listRemoteDirectory(path: normalized, preferCachedFirst: !forceRefresh)
+            let directories = entries
+                .filter(\.isDirectory)
+                .map { entry in
+                    FileManagerRemoteTreeNode(
+                        path: entry.path,
+                        name: entry.name,
+                        depth: depthForTreePath(entry.path),
+                        isExpanded: false,
+                        isLoading: false,
+                        childrenLoaded: false,
+                        children: []
+                    )
+                }
+
+            await MainActor.run {
+                remoteTreeRoot = updateNode(in: remoteTreeRoot, path: normalized) { node in
+                    let existingByPath = Dictionary(uniqueKeysWithValues: node.children.map { ($0.path, $0) })
+                    node.children = directories.map { candidate in
+                        if let existing = existingByPath[candidate.path] {
+                            var preserved = existing
+                            preserved.name = candidate.name
+                            preserved.depth = candidate.depth
+                            return preserved
+                        }
+                        return candidate
+                    }
+                    node.childrenLoaded = true
+                    node.isLoading = false
+                }
+            }
+        } catch {
+            await MainActor.run {
+                remoteTreeRoot = updateNode(in: remoteTreeRoot, path: normalized) { node in
+                    node.isLoading = false
+                    node.childrenLoaded = true
+                    node.children = []
+                }
+            }
+        }
+    }
+
+    private func nodeForPath(_ path: String, in node: FileManagerRemoteTreeNode) -> FileManagerRemoteTreeNode? {
+        let normalized = normalizeTreePath(path)
+        if node.path == normalized {
+            return node
+        }
+
+        for child in node.children {
+            if let found = nodeForPath(normalized, in: child) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    private func updateNode(
+        in node: FileManagerRemoteTreeNode,
+        path: String,
+        transform: (inout FileManagerRemoteTreeNode) -> Void
+    ) -> FileManagerRemoteTreeNode {
+        let normalized = normalizeTreePath(path)
+        var updated = node
+
+        if updated.path == normalized {
+            transform(&updated)
+            return updated
+        }
+
+        updated.children = updated.children.map { child in
+            updateNode(in: child, path: normalized, transform: transform)
+        }
+        return updated
+    }
+
+    private func flattenVisibleRemoteTreeNodes(from node: FileManagerRemoteTreeNode) -> [FileManagerRemoteTreeNode] {
+        var result: [FileManagerRemoteTreeNode] = [node]
+        if node.isExpanded {
+            for child in node.children {
+                result.append(contentsOf: flattenVisibleRemoteTreeNodes(from: child))
+            }
+        }
+        return result
+    }
+
+    private func normalizeTreePath(_ path: String) -> String {
+        let normalized = NSString(string: path).standardizingPath
+        if normalized.isEmpty {
+            return "/"
+        }
+        return normalized.hasPrefix("/") ? normalized : "/\(normalized)"
+    }
+
+    private func pathComponents(for path: String) -> [String] {
+        normalizeTreePath(path)
+            .split(separator: "/")
+            .map(String.init)
+    }
+
+    private func depthForTreePath(_ path: String) -> Int {
+        max(pathComponents(for: path).count - 1, 0)
+    }
+
+    private func parentPath(of path: String) -> String? {
+        Self.parentDirectoryPath(for: normalizeTreePath(path))
+    }
+
     private func beginRename(path: String) {
         renameTargetPath = path
         renameDraft = URL(fileURLWithPath: path).lastPathComponent
         isRenameSheetPresented = true
     }
 
-    private func beginEdit(_ item: RemoteListRowItem) {
+    private func beginEdit(_ item: FileManagerRemoteListRowItem) {
         guard !item.isDirectory else { return }
         let entry = remoteFileEntry(for: item)
         remoteEditorWindowManager.present(
@@ -1749,7 +1836,7 @@ struct FileManagerPanelView: View {
         )
     }
 
-    private func beginViewLog(_ item: RemoteListRowItem) {
+    private func beginViewLog(_ item: FileManagerRemoteListRowItem) {
         guard !item.isDirectory else { return }
         remoteLiveLogWindowManager.present(path: item.path)
     }
@@ -1766,7 +1853,7 @@ struct FileManagerPanelView: View {
         )
     }
 
-    private func beginCreateRemote(kind: RemoteCreateKind, in directoryPath: String) {
+    private func beginCreateRemote(kind: FileManagerRemoteCreateKind, in directoryPath: String) {
         createRemoteKind = kind
         createRemoteTargetDirectory = directoryPath
         createRemoteNameDraft = kind.defaultName
@@ -2059,7 +2146,7 @@ struct FileManagerPanelView: View {
     }
 
     private func rebuildDisplayedRemoteItems() {
-        let items: [RemoteListRowItem]
+        let items: [FileManagerRemoteListRowItem]
 
         if isShowingSearchResults {
             items = viewModel.remoteSearchResults.map(makeRemoteListRowItem(from:))
@@ -2104,7 +2191,7 @@ struct FileManagerPanelView: View {
 
         let paths = items.map(\.path)
         let itemsByPath = Dictionary(uniqueKeysWithValues: items.map { ($0.path, $0) })
-        remoteListPresentation = RemoteListPresentationCache(
+        remoteListPresentation = FileManagerRemoteListPresentationCache(
             items: items,
             paths: paths,
             itemsByPath: itemsByPath
@@ -2137,9 +2224,9 @@ struct FileManagerPanelView: View {
         return lhs.compare(rhs, options: options, range: nil, locale: locale)
     }
 
-    private func makeRemoteListRowItem(from entry: RemoteFileEntry) -> RemoteListRowItem {
+    private func makeRemoteListRowItem(from entry: RemoteFileEntry) -> FileManagerRemoteListRowItem {
         let parentPath = URL(fileURLWithPath: entry.path).deletingLastPathComponent().path
-        return RemoteListRowItem(
+        return FileManagerRemoteListRowItem(
             path: entry.path,
             displayName: entry.name,
             name: entry.name,
@@ -2156,8 +2243,8 @@ struct FileManagerPanelView: View {
         )
     }
 
-    private func makeRemoteListRowItem(from result: RemoteSearchResult) -> RemoteListRowItem {
-        return RemoteListRowItem(
+    private func makeRemoteListRowItem(from result: RemoteSearchResult) -> FileManagerRemoteListRowItem {
+        return FileManagerRemoteListRowItem(
             path: result.path,
             displayName: searchDisplayName(for: result),
             name: result.name,
@@ -2174,7 +2261,7 @@ struct FileManagerPanelView: View {
         )
     }
 
-    private func remoteFileEntry(for item: RemoteListRowItem) -> RemoteFileEntry {
+    private func remoteFileEntry(for item: FileManagerRemoteListRowItem) -> RemoteFileEntry {
         item.sourceEntry ?? RemoteFileEntry(
             name: item.name,
             path: item.path,
@@ -2258,7 +2345,7 @@ struct FileManagerPanelView: View {
         guard !trimmed.isEmpty else { return }
         toastHideTask?.cancel()
         withAnimation(.easeInOut(duration: 0.18)) {
-            operationToast = OperationToast(message: trimmed)
+            operationToast = FileManagerOperationToast(message: trimmed)
         }
         toastHideTask = Task { @MainActor [trimmed] in
             _ = trimmed
@@ -2272,7 +2359,7 @@ struct FileManagerPanelView: View {
     }
 
     @ViewBuilder
-    private func operationToastView(_ toast: OperationToast) -> some View {
+    private func operationToastView(_ toast: FileManagerOperationToast) -> some View {
         Text(toast.message)
             .font(.caption.weight(.semibold))
             .foregroundStyle(VisualStyle.textPrimary)
@@ -2309,50 +2396,5 @@ struct FileManagerPanelView: View {
 
     private func makePasteFeedback(destination: String) -> String {
         String(format: tr("Pasted into %@."), destination)
-    }
-}
-
-private struct RemoteSearchActivityTicker: View {
-    var activities: [RemoteSearchActivity]
-
-    @State private var activeIndex = 0
-
-    private var currentActivity: RemoteSearchActivity? {
-        guard !activities.isEmpty else { return nil }
-        let safeIndex = min(max(activeIndex, 0), activities.count - 1)
-        return activities[safeIndex]
-    }
-
-    var body: some View {
-        Group {
-            if let currentActivity {
-                HStack(spacing: 6) {
-                    Image(systemName: currentActivity.kind == .directory ? "folder" : "doc")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
-                    Text(currentActivity.path)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(VisualStyle.textSecondary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                }
-                .id("\(currentActivity.id)-\(activeIndex)")
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .task(id: activities.map(\.id).joined(separator: "|")) {
-            activeIndex = 0
-            guard activities.count > 1 else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(900))
-                guard !Task.isCancelled else { return }
-                await MainActor.run {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        activeIndex = (activeIndex + 1) % max(activities.count, 1)
-                    }
-                }
-            }
-        }
     }
 }

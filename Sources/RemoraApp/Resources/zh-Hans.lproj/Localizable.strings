@@ -506,6 +506,9 @@
 "Clear Search" = "清除搜索";
 "Close Search" = "关闭搜索";
 "Current Directory" = "当前目录";
+"Quick Paths" = "快捷路径";
+"Folders" = "目录";
+"Remote" = "远端";
 "Current directory: %@" = "当前目录：%@";
 "Entire Server" = "整个服务器";
 "No files or folders match “%@”." = "没有文件或文件夹匹配“%@”。";

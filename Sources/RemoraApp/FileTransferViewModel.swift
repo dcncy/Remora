@@ -618,6 +618,31 @@ final class FileTransferViewModel: ObservableObject {
         }
     }
 
+    func listRemoteDirectory(path: String, preferCachedFirst: Bool = true) async throws -> [RemoteFileEntry] {
+        let normalizedPath = normalizeRemoteDirectoryPath(path)
+
+        if preferCachedFirst,
+           let cached = remoteDirectoryCache[normalizedPath],
+           Date().timeIntervalSince(cached.fetchedAt) < remoteDirectoryCacheTTL
+        {
+            return cached.entries
+        }
+
+        let fetched = try await sftpClient.list(path: normalizedPath)
+        let sorted = sortRemoteEntries(fetched)
+        let cacheEntry = CachedRemoteDirectory(entries: sorted, fetchedAt: Date())
+
+        await MainActor.run {
+            remoteDirectoryCache[normalizedPath] = cacheEntry
+            if normalizedPath == normalizeRemoteDirectoryPath(remoteDirectoryPath) {
+                remoteEntries = sorted
+                remoteLoadErrorMessage = nil
+            }
+        }
+
+        return sorted
+    }
+
     func enqueueUpload(localEntry: LocalFileEntry) {
         guard !localEntry.isDirectory else { return }
         enqueueUpload(localFileURLs: [localEntry.url], toRemoteDirectory: remoteDirectoryPath)

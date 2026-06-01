@@ -510,6 +510,9 @@
 "Clear Search" = "Clear Search";
 "Close Search" = "Close Search";
 "Current Directory" = "Current Directory";
+"Quick Paths" = "Quick Paths";
+"Folders" = "Folders";
+"Remote" = "Remote";
 "Current directory: %@" = "Current directory: %@";
 "Entire Server" = "Entire Server";
 "No files or folders match “%@”." = "No files or folders match “%@”.";
