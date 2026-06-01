@@ -6,6 +6,40 @@ This project generally follows [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [v0.17.3] - 2026-06-01
+
+### English
+
+#### Added
+
+- Added a dedicated multi-window Docker workspace for connected SSH sessions, including container, image, and Compose views with lightweight filtering support.
+
+#### Changed
+
+- Refined the Docker workspace layout into a denser native macOS-style tool surface with tighter spacing, clearer status summaries, and expanded container metadata presentation.
+- Improved Docker loading states with skeleton placeholders during initial fetch and refresh cycles to make workspace state transitions easier to read.
+
+#### Fixed
+
+- Fixed Docker workspace command execution so panel actions reuse the currently connected terminal SSH session instead of silently falling back to an unrelated connection path.
+- Fixed Docker log viewing so recent output is shown immediately before follow mode attaches, and stderr-backed container or Compose logs are merged into the visible stream.
+
+### 中文
+
+#### 新增
+
+- 为已连接的 SSH 会话新增独立多窗口 Docker 工作区，包含容器、镜像和 Compose 视图，并支持轻量筛选。
+
+#### 变更
+
+- 将 Docker 工作区调整为更紧凑的原生 macOS 工具面板，优化了间距、状态摘要和容器元数据展示层级。
+- 为 Docker 初始加载和刷新过程补充了骨架屏反馈，使工作区状态切换更直观。
+
+#### 修复
+
+- 修复了 Docker 工作区命令执行链路，面板操作现在会复用当前已连接终端的 SSH 会话，不再悄悄退回到无关的连接路径。
+- 修复了 Docker 日志查看问题：现在会先立即显示最近日志，再接入 follow 模式，同时将容器和 Compose 日志中的 stderr 合并到可见输出中。
+
 ## [v0.17.2] - 2026-05-31
 
 ### English
