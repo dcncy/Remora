@@ -79,6 +79,7 @@ final class FileManagerWindowSplitController: NSSplitViewController {
     }
 
     func reloadSidebar(selectedPath: String) {
+        print("[FileManager][Sidebar] reloadSidebar selectedPath=\(selectedPath)")
         sidebarController.selectedPath = selectedPath
         sidebarController.reload()
     }
@@ -89,6 +90,7 @@ final class FileManagerWindowSplitController: NSSplitViewController {
         isLoading: Bool,
         searchQuery: String
     ) {
+        print("[FileManager][Detail] reloadDetail path=\(currentPath) entries=\(entries.count) loading=\(isLoading) search=\(searchQuery)")
         detailController.update(
             currentPath: currentPath,
             entries: entries,
@@ -148,6 +150,7 @@ private final class FileManagerOutlineSidebarController: NSViewController, NSOut
     private let outlineView = NSOutlineView()
     private var scrollView: NSScrollView!
     private var quickPathDropTargetID: UUID?
+    private var isSelectingProgrammatically = false
 
     private enum Section: Int, CaseIterable {
         case quickPaths
@@ -217,10 +220,12 @@ private final class FileManagerOutlineSidebarController: NSViewController, NSOut
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        print("[FileManager][Sidebar] viewDidLoad")
         reload()
     }
 
     func reload() {
+        print("[FileManager][Sidebar] reload selectedPath=\(selectedPath) quickPaths=\(quickPathsProvider().count) directories=\(directoriesProvider().count)")
         outlineView.reloadData()
         outlineView.expandItem(Section.quickPaths.rawValue)
         outlineView.expandItem(Section.folders.rawValue)
@@ -306,14 +311,31 @@ private final class FileManagerOutlineSidebarController: NSViewController, NSOut
     }
 
     func outlineViewSelectionDidChange(_ notification: Notification) {
+        if isSelectingProgrammatically {
+            print("[FileManager][Sidebar] selectionDidChange ignored (programmatic)")
+            return
+        }
         let row = outlineView.selectedRow
         guard row >= 0 else { return }
         let item = outlineView.item(atRow: row)
+        print("[FileManager][Sidebar] selectionDidChange row=\(row) item=\(String(describing: item))")
         if item as? String == "__root__" {
+            if selectedPath == "/" {
+                print("[FileManager][Sidebar] selectionDidChange skip root reselect")
+                return
+            }
             onSelectRoot()
         } else if let quickPath = item as? HostQuickPath {
+            if quickPath.path == selectedPath {
+                print("[FileManager][Sidebar] selectionDidChange skip quickPath reselect path=\(quickPath.path)")
+                return
+            }
             onSelectQuickPath(quickPath)
         } else if let directory = item as? RemoteFileEntry {
+            if directory.path == selectedPath {
+                print("[FileManager][Sidebar] selectionDidChange skip directory reselect path=\(directory.path)")
+                return
+            }
             onSelectDirectory(directory.path)
         }
     }
@@ -322,6 +344,7 @@ private final class FileManagerOutlineSidebarController: NSViewController, NSOut
         let row = outlineView.clickedRow
         guard row >= 0 else { return }
         let item = outlineView.item(atRow: row)
+        print("[FileManager][Sidebar] doubleClick row=\(row) item=\(String(describing: item))")
         if item as? String == "__root__" {
             onSelectRoot()
         } else if let directory = item as? RemoteFileEntry {
@@ -331,6 +354,8 @@ private final class FileManagerOutlineSidebarController: NSViewController, NSOut
 
     private func selectMatchingRow() {
         let rowCount = outlineView.numberOfRows
+        isSelectingProgrammatically = true
+        defer { isSelectingProgrammatically = false }
         for row in 0..<rowCount {
             let item = outlineView.item(atRow: row)
             if item as? String == "__root__", selectedPath == "/" {
@@ -440,6 +465,7 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
 
     override func loadView() {
         let container = NSView()
+        print("[FileManager][Detail] loadView")
 
         for column in Column.allCases {
             let tableColumn = NSTableColumn(identifier: .init(column.rawValue))
@@ -499,6 +525,7 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
         isLoading: Bool,
         searchQuery: String
     ) {
+        print("[FileManager][Detail] update path=\(currentPath) entries=\(entries.count) loading=\(isLoading) search=\(searchQuery)")
         self.currentPath = currentPath
         self.entries = entries
         self.isLoading = isLoading
@@ -574,6 +601,7 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
         let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
         guard row >= 0 else { return }
         let entry = filteredEntries[row]
+        print("[FileManager][Detail] doubleClick row=\(row) path=\(entry.path) isDirectory=\(entry.isDirectory)")
         if entry.isDirectory {
             onOpenDirectory(entry)
         } else {
@@ -677,38 +705,46 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
     }
 
     @objc private func handleRefresh() {
+        print("[FileManager][Detail] context refresh path=\(currentPath)")
         onRefresh()
     }
 
     @objc private func handleCreateDirectory() {
+        print("[FileManager][Detail] context createDirectory path=\(currentPath)")
         onCreateDirectory(currentPath)
     }
 
     @objc private func handleCreateFile() {
+        print("[FileManager][Detail] context createFile path=\(currentPath)")
         onCreateFile(currentPath)
     }
 
     @objc private func handleAddCurrentQuickPath() {
+        print("[FileManager][Detail] context addQuickPath path=\(currentPath)")
         onAddCurrentQuickPath(currentPath)
     }
 
     @objc private func handleUpload() {
+        print("[FileManager][Detail] context upload path=\(currentPath)")
         onUploadToDirectory(currentPath)
     }
 
     @objc private func handleRename() {
         guard let entry = clickedOrSelectedEntries().first else { return }
+        print("[FileManager][Detail] context rename path=\(entry.path)")
         onRenameEntry(entry)
     }
 
     @objc private func handleDelete() {
         let entries = clickedOrSelectedEntries()
         guard !entries.isEmpty else { return }
+        print("[FileManager][Detail] context delete count=\(entries.count)")
         onDeleteEntries(entries)
     }
 
     @objc private func handleCopyPath() {
         guard let entry = clickedOrSelectedEntries().first else { return }
+        print("[FileManager][Detail] context copyPath path=\(entry.path)")
         onCopyPath(entry.path)
     }
 
@@ -725,21 +761,25 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
 
     @objc private func handleOpenTextFile() {
         guard let entry = clickedOrSelectedEntries().first, !entry.isDirectory else { return }
+        print("[FileManager][Detail] context openText path=\(entry.path)")
         onOpenTextFile?(entry)
     }
 
     @objc private func handleOpenLogView() {
         guard let entry = clickedOrSelectedEntries().first, !entry.isDirectory else { return }
+        print("[FileManager][Detail] context openLog path=\(entry.path)")
         onOpenLogView?(entry)
     }
 
     @objc private func handleShowProperties() {
         guard let entry = clickedOrSelectedEntries().first else { return }
+        print("[FileManager][Detail] context properties path=\(entry.path)")
         onShowProperties?(entry)
     }
 
     @objc private func handleEditPermissions() {
         guard let entry = clickedOrSelectedEntries().first else { return }
+        print("[FileManager][Detail] context permissions path=\(entry.path)")
         onEditPermissions?(entry)
     }
 
