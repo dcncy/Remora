@@ -291,6 +291,7 @@ final class FileManagerWorkspaceWindowController: NSWindowController, NSWindowDe
         self.onClose = onClose
         self.remoteEditorWindowManager = RemoteTextEditorWindowManager(fileTransfer: viewModel)
         self.remoteLiveLogWindowManager = RemoteLiveLogWindowManager(fileTransfer: viewModel)
+        var refreshQuickPaths: (() -> Void)?
 
         self.splitController = FileManagerWindowSplitController(
             selectedPath: viewModel.remoteDirectoryPath,
@@ -314,7 +315,9 @@ final class FileManagerWorkspaceWindowController: NSWindowController, NSWindowDe
                 viewModel.navigateRemote(to: path)
             },
             onAddQuickPathForDirectory: { path in
-                _ = onAddQuickPath(path, path, runtime)
+                if onAddQuickPath(path, path, runtime) != nil {
+                    refreshQuickPaths?()
+                }
             },
             onRenameQuickPath: { quickPath in
                 _ = onRenameQuickPath(quickPath, quickPath.name, runtime)
@@ -339,7 +342,9 @@ final class FileManagerWorkspaceWindowController: NSWindowController, NSWindowDe
                 onRefreshRemote(runtime)
             },
             onAddCurrentQuickPath: { path in
-                _ = onAddQuickPath(path, path, runtime)
+                if onAddQuickPath(path, path, runtime) != nil {
+                    refreshQuickPaths?()
+                }
             },
             onCreateDirectory: { path in
                 let alert = NSAlert()
@@ -444,6 +449,9 @@ final class FileManagerWorkspaceWindowController: NSWindowController, NSWindowDe
 
         super.init(window: window)
         window.delegate = self
+        refreshQuickPaths = { [weak self] in
+            self?.splitController.refreshSidebarQuickPaths()
+        }
         toolbarController.onDownloadsClicked = { [weak self] in
             self?.toggleDownloadsPopover(viewModel: viewModel)
         }

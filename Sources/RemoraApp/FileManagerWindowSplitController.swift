@@ -89,6 +89,10 @@ final class FileManagerWindowSplitController: NSSplitViewController {
         sidebarController.reload()
     }
 
+    func refreshSidebarQuickPaths() {
+        sidebarController.reloadQuickPaths()
+    }
+
     func updateSidebarSelection(selectedPath: String) {
         sidebarController.updateSelection(selectedPath: selectedPath)
     }
@@ -248,6 +252,7 @@ private final class FileManagerOutlineSidebarController: NSViewController, NSOut
         outlineView.dataSource = self
         outlineView.target = self
         outlineView.doubleAction = #selector(handleDoubleClick)
+        outlineView.menu = buildContextMenu()
 
         scrollView = NSScrollView()
         scrollView.documentView = outlineView
@@ -291,6 +296,12 @@ private final class FileManagerOutlineSidebarController: NSViewController, NSOut
         LogManager.debug(.fileManager, "sidebar updateSelection selectedPath=\(self.selectedPath)")
         refreshRowColors()
         syncSelectionToSelectedPath()
+    }
+
+    func reloadQuickPaths() {
+        LogManager.debug(.fileManager, "sidebar reloadQuickPaths quickPaths=\(quickPathsProvider().count)")
+        outlineView.reloadItem(Section.quickPaths.rawValue, reloadChildren: true)
+        _ = selectPreferredMatchingRow()
     }
 
     func updateDirectorySnapshot(path: String, entries: [RemoteFileEntry]) {
@@ -395,6 +406,10 @@ private final class FileManagerOutlineSidebarController: NSViewController, NSOut
         return true
     }
 
+    func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
+        FileManagerSidebarRowView()
+    }
+
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         let identifier = NSUserInterfaceItemIdentifier("finder-sidebar-cell")
         let cell = outlineView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? {
@@ -495,7 +510,7 @@ private final class FileManagerOutlineSidebarController: NSViewController, NSOut
     }
 
     private func syncSelectionToSelectedPath() {
-        if selectVisibleQuickPathOrRoot() {
+        if selectPreferredMatchingRow() {
             return
         }
 
@@ -507,19 +522,27 @@ private final class FileManagerOutlineSidebarController: NSViewController, NSOut
         }
     }
 
-    private func selectVisibleQuickPathOrRoot() -> Bool {
+    private func selectPreferredMatchingRow() -> Bool {
         let rowCount = outlineView.numberOfRows
         isSelectingProgrammatically = true
         defer { isSelectingProgrammatically = false }
         for row in 0..<rowCount {
             let item = outlineView.item(atRow: row)
-            if item as? String == SidebarItemID.root, selectedPath == "/" {
-                LogManager.debug(.fileManager, "sidebar selectVisible root row=\(row)")
+            if let directory = item as? DirectoryNode, directory.path == selectedPath {
+                LogManager.debug(.fileManager, "sidebar selectPreferred directory row=\(row) path=\(directory.path)")
                 outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
                 return true
             }
+        }
+        for row in 0..<rowCount {
+            let item = outlineView.item(atRow: row)
             if let quickPath = item as? HostQuickPath, quickPath.path == selectedPath {
-                LogManager.debug(.fileManager, "sidebar selectVisible quickPath row=\(row) path=\(quickPath.path)")
+                LogManager.debug(.fileManager, "sidebar selectPreferred quickPath row=\(row) path=\(quickPath.path)")
+                outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                return true
+            }
+            if item as? String == SidebarItemID.root, selectedPath == "/" {
+                LogManager.debug(.fileManager, "sidebar selectPreferred root row=\(row)")
                 outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
                 return true
             }
@@ -818,6 +841,33 @@ private final class FileManagerOutlineSidebarController: NSViewController, NSOut
         guard !rows.isEmpty else { return }
         outlineView.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
     }
+
+    private func buildContextMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(withTitle: tr("Add current path"), action: #selector(handleAddQuickPathFromSidebar), keyEquivalent: "")
+        return menu
+    }
+
+    @objc private func handleAddQuickPathFromSidebar() {
+        let row = outlineView.clickedRow >= 0 ? outlineView.clickedRow : outlineView.selectedRow
+        guard row >= 0 else { return }
+        let item = outlineView.item(atRow: row)
+        if item as? String == SidebarItemID.root {
+            onAddQuickPathForDirectory("/")
+        } else if let quickPath = item as? HostQuickPath {
+            onAddQuickPathForDirectory(quickPath.path)
+        } else if let directory = item as? DirectoryNode {
+            onAddQuickPathForDirectory(directory.path)
+        }
+    }
+}
+
+@MainActor
+private final class FileManagerSidebarRowView: NSTableRowView {
+    override var isEmphasized: Bool {
+        get { true }
+        set { }
+    }
 }
 
 @MainActor
@@ -844,12 +894,9 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
     private var scrollView: NSScrollView!
     private let emptyLabel = NSTextField(labelWithString: "")
     private let loadingIndicator = NSProgressIndicator()
-    private let transferProgressIndicator = NSProgressIndicator()
-
     private var currentPath = "/"
     private var entries: [RemoteFileEntry] = []
     private var isLoading = false
-    private var transferProgress: Double?
     private var sortColumn: Column = .name
     private var sortAscending = true
     private let defaults = UserDefaults.standard
@@ -978,16 +1025,9 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
         loadingIndicator.controlSize = .small
         loadingIndicator.isDisplayedWhenStopped = false
 
-        transferProgressIndicator.translatesAutoresizingMaskIntoConstraints = false
-        transferProgressIndicator.style = .bar
-        transferProgressIndicator.minValue = 0
-        transferProgressIndicator.maxValue = 1
-        transferProgressIndicator.isHidden = true
-
         container.addSubview(scrollView)
         container.addSubview(emptyLabel)
         container.addSubview(loadingIndicator)
-        container.addSubview(transferProgressIndicator)
 
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -1000,10 +1040,6 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
 
             loadingIndicator.centerXAnchor.constraint(equalTo: container.centerXAnchor),
             loadingIndicator.bottomAnchor.constraint(equalTo: emptyLabel.topAnchor, constant: -12),
-
-            transferProgressIndicator.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-            transferProgressIndicator.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-            transferProgressIndicator.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -10),
         ])
 
         self.view = container
@@ -1025,10 +1061,8 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
         self.entries = entries
         self.isLoading = isLoading
         self.searchQuery = searchQuery
-        self.transferProgress = transferProgress
         tableView.reloadData()
         updateEmptyState()
-        updateTransferProgressIndicator()
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
@@ -1235,8 +1269,14 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
     }
 
     @objc private func handleAddCurrentQuickPath() {
-        LogManager.debug(.fileManager, "detail context addQuickPath path=\(currentPath)")
-        onAddCurrentQuickPath(currentPath)
+        let targetPath: String
+        if let entry = clickedOrSelectedEntries().first, entry.isDirectory {
+            targetPath = entry.path
+        } else {
+            targetPath = currentPath
+        }
+        LogManager.debug(.fileManager, "detail context addQuickPath path=\(targetPath)")
+        onAddCurrentQuickPath(targetPath)
     }
 
     @objc private func handleUpload() {
@@ -1372,16 +1412,6 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
         }
         image.size = NSSize(width: 16, height: 16)
         return image
-    }
-
-    private func updateTransferProgressIndicator() {
-        guard let transferProgress else {
-            transferProgressIndicator.isHidden = true
-            transferProgressIndicator.doubleValue = 0
-            return
-        }
-        transferProgressIndicator.isHidden = false
-        transferProgressIndicator.doubleValue = min(max(transferProgress, 0), 1)
     }
 
     private func animateDownload() {
