@@ -349,7 +349,7 @@ struct TerminalPaneView: View {
 
     @ViewBuilder
     private var dockerToolbarIcon: some View {
-        if let url = Bundle.module.url(forResource: "docker-mark-ocean-blue", withExtension: "png", subdirectory: "ToolbarIcons"),
+        if let url = Bundle(for: AppDelegate.self).url(forResource: "docker-mark-ocean-blue", withExtension: "png", subdirectory: "ToolbarIcons"),
            let image = renderedDockerToolbarImage(from: url) {
             Image(nsImage: image)
                 .resizable()

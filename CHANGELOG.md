@@ -6,6 +6,22 @@ This project generally follows [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [v0.17.5] - 2026-06-06
+
+### English
+
+#### Fixed
+
+- Fixed the macOS release packaging workflow for the terminal toolbar icon refresh by loading the Docker toolbar asset through the app resource bundle path used by archive builds.
+- Continued polishing the terminal-pane toolbar with a smaller icon scale, removal of the unused trailing pointer indicator, and a Docker-specific toolbar mark.
+
+### 中文
+
+#### 修复
+
+- 修复了终端工具栏图标更新后的 macOS 发布打包问题：Docker 工具栏图标现在通过归档构建可用的应用资源路径加载，避免 Release Workflow 在归档阶段失败。
+- 继续优化了终端面板工具栏：进一步缩小图标尺寸，移除无用的尾部指针状态图标，并使用 Docker 专属图标替换原来的占位图标。
+
 ## [v0.17.4] - 2026-06-06
 
 ### English
