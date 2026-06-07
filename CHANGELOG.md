@@ -6,6 +6,20 @@ This project generally follows [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [v0.17.7] - 2026-06-06
+
+### English
+
+#### Fixed
+
+- Fixed the release Xcode project metadata so archive builds use the regenerated project configuration that includes all OpenSSH launcher source files required by `RemoraCore`.
+
+### 中文
+
+#### 修复
+
+- 修复了发布用 Xcode 工程元数据不同步的问题，归档构建现在会使用重新生成后的工程配置，确保 `RemoraCore` 所需的 OpenSSH 启动器源码全部参与编译。
+
 ## [v0.17.6] - 2026-06-06
 
 ### English
