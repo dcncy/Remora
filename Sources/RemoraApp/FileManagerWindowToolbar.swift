@@ -5,13 +5,14 @@ import SwiftUI
 final class FileManagerWindowToolbar: NSObject, NSToolbarDelegate, NSSearchFieldDelegate {
     let toolbar = NSToolbar(identifier: "file-manager-window-toolbar")
     let searchField = NSSearchField(frame: NSRect(x: 0, y: 0, width: 220, height: 0))
-    let pathControl = NSPathControl(frame: NSRect(x: 0, y: 0, width: 420, height: 28))
+    let pathControl = FileManagerToolbarPathControl(frame: NSRect(x: 0, y: 0, width: 420, height: 28))
     fileprivate let downloadsButtonView = FileManagerDownloadsButtonView(frame: NSRect(x: 0, y: 0, width: 30, height: 30))
 
     var onBack: (() -> Void)?
     var onForward: (() -> Void)?
     var onRefresh: (() -> Void)?
     var onPathSelected: ((String) -> Void)?
+    var onCopyCurrentPath: ((String) -> Void)?
     var onSearchChanged: ((String) -> Void)?
     var onDownloadsClicked: (() -> Void)?
     var downloadsAnchorView: NSView { downloadsButtonView }
@@ -19,6 +20,7 @@ final class FileManagerWindowToolbar: NSObject, NSToolbarDelegate, NSSearchField
     private weak var backItem: NSToolbarItem?
     private weak var forwardItem: NSToolbarItem?
     private var pathMap: [String: String] = [:]
+    private var currentPathForCopy: String?
 
     override init() {
         super.init()
@@ -34,6 +36,10 @@ final class FileManagerWindowToolbar: NSObject, NSToolbarDelegate, NSSearchField
         pathControl.pathStyle = .standard
         pathControl.target = self
         pathControl.action = #selector(handlePathClick)
+        pathControl.onCopyPath = { [weak self] in
+            guard let self, let path = self.currentPathForCopy else { return }
+            self.onCopyCurrentPath?(path)
+        }
 
         downloadsButtonView.onClick = { [weak self] in
             self?.onDownloadsClicked?()
@@ -45,6 +51,7 @@ final class FileManagerWindowToolbar: NSObject, NSToolbarDelegate, NSSearchField
         forwardItem?.isEnabled = canGoForward
         pathControl.url = URL(fileURLWithPath: currentPath)
         pathMap = breadcrumbPathMap(for: currentPath)
+        currentPathForCopy = currentPath
     }
 
     func updateDownloads(progress: Double?, hasHistory: Bool, status: TransferQueueAggregateStatus) {
@@ -147,6 +154,23 @@ final class FileManagerWindowToolbar: NSObject, NSToolbarDelegate, NSSearchField
             map[component] = current
         }
         return map
+    }
+}
+
+@MainActor
+final class FileManagerToolbarPathControl: NSPathControl {
+    var onCopyPath: (() -> Void)?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        let item = NSMenuItem(title: tr("Copy Path"), action: #selector(handleCopyPath), keyEquivalent: "")
+        item.target = self
+        menu.addItem(item)
+        return menu
+    }
+
+    @objc private func handleCopyPath() {
+        onCopyPath?()
     }
 }
 

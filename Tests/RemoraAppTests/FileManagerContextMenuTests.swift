@@ -52,4 +52,19 @@ struct FileManagerContextMenuTests {
         #expect(FileManagerContextCopyPathResolver.sidebarTargetPath(clickedItemPath: "/srv/app") == "/srv/app")
         #expect(FileManagerContextCopyPathResolver.sidebarTargetPath(clickedItemPath: nil) == nil)
     }
+
+    @MainActor
+    @Test
+    func toolbarCopyPathUsesCurrentToolbarPath() {
+        let toolbar = FileManagerWindowToolbar()
+        var copiedPath: String?
+        toolbar.onCopyCurrentPath = { path in
+            copiedPath = path
+        }
+
+        toolbar.update(currentPath: "/srv/releases/app", canGoBack: true, canGoForward: false)
+        toolbar.pathControl.onCopyPath?()
+
+        #expect(copiedPath == "/srv/releases/app")
+    }
 }

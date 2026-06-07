@@ -294,6 +294,7 @@ final class FileManagerWorkspaceWindowController: NSWindowController, NSWindowDe
         self.remoteLiveLogWindowManager = RemoteLiveLogWindowManager(fileTransfer: viewModel)
         var refreshQuickPaths: (() -> Void)?
         var copyPathHandler: ((String) -> Void)?
+        var toolbarCopyPathHandler: ((String) -> Void)?
 
         self.splitController = FileManagerWindowSplitController(
             selectedPath: viewModel.remoteDirectoryPath,
@@ -435,6 +436,9 @@ final class FileManagerWorkspaceWindowController: NSWindowController, NSWindowDe
         toolbarController.onPathSelected = { path in
             viewModel.navigateRemote(to: path)
         }
+        toolbarController.onCopyCurrentPath = { path in
+            toolbarCopyPathHandler?(path)
+        }
 
         let window = NSWindow(contentViewController: splitController)
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
@@ -452,6 +456,9 @@ final class FileManagerWorkspaceWindowController: NSWindowController, NSWindowDe
         window.delegate = self
         toastController.installIfNeeded(in: window)
         copyPathHandler = { [weak self] path in
+            self?.copyPathToPasteboard(path)
+        }
+        toolbarCopyPathHandler = { [weak self] path in
             self?.copyPathToPasteboard(path)
         }
         refreshQuickPaths = { [weak self] in
