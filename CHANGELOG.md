@@ -6,6 +6,42 @@ This project generally follows [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [Unreleased]
 
+## [v0.17.8] - 2026-06-10
+
+### English
+
+#### Added
+
+- Added remote copy, cut, paste, clone, and move actions to the standalone native file manager window so common file operations can stay inside the same SSH/SFTP workspace.
+- Added a remote destination chooser sheet for file-manager move actions, plus richer remote clipboard state that tracks source connection metadata for same-server paste validation.
+
+#### Changed
+
+- Moved remote archive creation and extraction in the standalone file manager to pure server-side execution over SSH, including remote tool detection, archive entry safety checks, and guided missing-tool install prompts.
+- Updated remote copy semantics to use metadata-preserving `cp -a` when available, and aligned clone naming so duplicated items keep compound extensions such as `.tar.gz`.
+
+#### Fixed
+
+- Fixed file-manager paste targeting so right-clicking a directory pastes into that directory, while file-row and blank-area paste actions still target the current folder.
+- Fixed move and paste feedback in the standalone file manager so success toasts fire only after remote operations complete rather than when actions are merely queued.
+
+### 中文
+
+#### 新增
+
+- 为独立原生文件管理窗口新增了远程复制、剪切、粘贴、克隆和移动到操作，常见文件处理现在可以直接在同一个 SSH/SFTP 工作区内完成。
+- 为文件管理器的移动到操作新增了远程目标目录选择弹窗，并补充了更完整的远程剪贴板状态，用于校验“仅支持同一服务器内粘贴”的限制。
+
+#### 变更
+
+- 将独立文件管理器中的远程压缩与解压彻底切换为通过 SSH 在服务器端执行，补齐了远端工具检测、压缩包条目安全检查以及缺少命令时的安装引导。
+- 将远程复制语义调整为优先使用保留元信息的 `cp -a`，并统一了克隆命名规则，使 `.tar.gz` 这类复合后缀在克隆后仍能正确保留。
+
+#### 修复
+
+- 修复了文件管理器粘贴目标判断：右键目录时会粘贴到该目录，右键文件行或空白区域时仍会粘贴到当前目录。
+- 修复了独立文件管理器中移动和粘贴的反馈时机，成功提示现在只会在远端操作真正完成后显示，而不是在任务刚加入时显示。
+
 ## [v0.17.7] - 2026-06-06
 
 ### English
