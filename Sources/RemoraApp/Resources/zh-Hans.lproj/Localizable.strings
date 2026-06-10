@@ -199,12 +199,15 @@
 "Queued %d item(s) for download." = "已将 %d 个项目加入下载队列。";
 "Queued %d item(s) for upload to %@." = "已将 %d 个项目加入上传队列（目标：%@）。";
 "Pasted into %@." = "已粘贴到 %@。";
+"Cross-server paste is not supported yet." = "暂不支持跨服务器粘贴。";
+"Move queued." = "已加入移动任务。";
 "Retrying failed transfers." = "正在重试失败的传输任务。";
 "Moved %d item(s) to %@." = "已将 %d 个项目移动到 %@。";
 "Renamed to %@." = "已重命名为 %@。";
 "Created \"%@\"." = "已创建“%@”。";
 "Rename" = "重命名";
 "Copy" = "复制";
+"Clone" = "克隆";
 "Terminal" = "终端";
 "Cut" = "剪切";
 "Download Current" = "下载当前项";

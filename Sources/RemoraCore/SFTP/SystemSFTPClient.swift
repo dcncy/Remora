@@ -308,7 +308,7 @@ public actor SystemSFTPClient: SFTPClientProtocol {
     public func copy(from: String, to: String) async throws {
         let source = normalize(from)
         let destination = normalize(to)
-        let command = "cp -R -- \(Self.quoteShellArgument(source)) \(Self.quoteShellArgument(destination))"
+        let command = "cp -a -- \(Self.quoteShellArgument(source)) \(Self.quoteShellArgument(destination))"
         try await runSSHCommand(command)
     }
 

@@ -50,9 +50,24 @@ enum RemoteClipboardMode: String, Sendable {
     case cut
 }
 
+struct RemoteClipboardItem: Equatable, Sendable {
+    var path: String
+    var parentDirectory: String
+    var name: String
+    var isDirectory: Bool
+}
+
 struct RemoteClipboardState: Equatable, Sendable {
     var mode: RemoteClipboardMode
-    var sourcePaths: [String]
+    var sourceConnectionID: String
+    var sourceParentDirectory: String
+    var items: [RemoteClipboardItem]
+    var createdAt: Date
+}
+
+enum RemotePasteResult: Equatable, Sendable {
+    case success(destinationDirectory: String, pastedCount: Int, clearsClipboard: Bool)
+    case blockedCrossConnection
 }
 
 enum RemoteContextAction: Sendable {
@@ -268,6 +283,7 @@ final class FileTransferViewModel: ObservableObject {
     private var activeRemoteBindingKey = "__default"
     private var remoteBindingStates: [String: RemoteBindingState] = [:]
     private var remoteArchiveToolchainCache: [String: RemoteArchiveToolchain] = [:]
+    private var currentRemoteConnectionID = "__default"
     // Increments on every bindSFTPClient call. Async remote-load tasks must match
     // the latest generation before mutating published state, preventing stale
     // results from old session bindings from overwriting the current UI.
@@ -355,6 +371,7 @@ final class FileTransferViewModel: ObservableObject {
 
         sftpClient = client
         activeRemoteBindingKey = normalizedBindingKey
+        currentRemoteConnectionID = normalizedBindingKey
         clearRemoteSearch()
         remoteClipboard = nil
         cancelTrackedTransfers(clearQueue: true)
@@ -577,7 +594,9 @@ final class FileTransferViewModel: ObservableObject {
     func canPaste(into destinationDirectory: String) -> Bool {
         guard let clipboard = remoteClipboard else { return false }
         let normalizedDestination = normalizeRemoteDirectoryPath(destinationDirectory)
-        return !clipboard.sourcePaths.isEmpty && normalizedDestination != ""
+        return !clipboard.items.isEmpty
+            && clipboard.sourceConnectionID == currentRemoteConnectionID
+            && !normalizedDestination.isEmpty
     }
 
     func performContextAction(_ action: RemoteContextAction) {
@@ -830,27 +849,51 @@ final class FileTransferViewModel: ObservableObject {
     }
 
     func moveRemoteEntries(paths: [String], toDirectory destinationDirectory: String) {
+        Task {
+            _ = await moveRemoteEntriesResult(paths: paths, toDirectory: destinationDirectory)
+        }
+    }
+
+    func moveRemoteEntriesResult(paths: [String], toDirectory destinationDirectory: String) async -> Int {
         let destination = normalizeRemoteDirectoryPath(destinationDirectory)
         let normalizedSources = paths
             .map(normalizeRemoteDirectoryPath)
             .filter { $0 != "/" }
-        guard !normalizedSources.isEmpty else { return }
+        guard !normalizedSources.isEmpty else { return 0 }
+
+        var movedCount = 0
+        for source in normalizedSources {
+            let sourceName = URL(fileURLWithPath: source).lastPathComponent
+            let baseTargetPath = normalizedRemotePath(base: destination, child: sourceName)
+            guard let targetPath = await resolveRemoteConflictPath(for: baseTargetPath) else {
+                continue
+            }
+            guard targetPath != source else {
+                continue
+            }
+            do {
+                try await sftpClient.move(from: source, to: targetPath)
+                movedCount += 1
+            } catch {
+                continue
+            }
+        }
+        invalidateRemoteDirectoryCache()
+        await refreshRemoteEntries()
+        return movedCount
+    }
+
+    func cloneRemoteEntry(path: String) {
+        let normalizedPath = normalizeRemoteDirectoryPath(path)
+        guard normalizedPath != "/" else { return }
 
         Task {
-            for source in normalizedSources {
-                let sourceName = URL(fileURLWithPath: source).lastPathComponent
-                let baseTargetPath = normalizedRemotePath(base: destination, child: sourceName)
-                guard let targetPath = await resolveRemoteConflictPath(for: baseTargetPath) else {
-                    continue
-                }
-                guard targetPath != source else {
-                    continue
-                }
-                do {
-                    try await sftpClient.move(from: source, to: targetPath)
-                } catch {
-                    continue
-                }
+            do {
+                let attributes = try await sftpClient.stat(path: normalizedPath)
+                let destination = try await nextClonePath(for: normalizedPath, isDirectory: attributes.isDirectory)
+                try await sftpClient.copy(from: normalizedPath, to: destination)
+            } catch {
+                return
             }
             invalidateRemoteDirectoryCache()
             await refreshRemoteEntries()
@@ -885,28 +928,44 @@ final class FileTransferViewModel: ObservableObject {
             remoteClipboard = nil
             return
         }
-        remoteClipboard = RemoteClipboardState(mode: mode, sourcePaths: normalized)
+        let items = normalized.map { path in
+            let parentDirectory = URL(fileURLWithPath: path).deletingLastPathComponent().path
+            return RemoteClipboardItem(
+                path: path,
+                parentDirectory: parentDirectory.isEmpty ? "/" : parentDirectory,
+                name: URL(fileURLWithPath: path).lastPathComponent,
+                isDirectory: remoteEntries.first(where: { normalizeRemoteDirectoryPath($0.path) == path })?.isDirectory ?? false
+            )
+        }
+        let sourceParentDirectory = items.first?.parentDirectory ?? "/"
+        remoteClipboard = RemoteClipboardState(
+            mode: mode,
+            sourceConnectionID: currentRemoteConnectionID,
+            sourceParentDirectory: sourceParentDirectory,
+            items: items,
+            createdAt: Date()
+        )
     }
 
     func pasteRemoteEntries(into destinationDirectory: String) {
         guard let clipboard = remoteClipboard else { return }
         let destination = normalizeRemoteDirectoryPath(destinationDirectory)
+        guard clipboard.sourceConnectionID == currentRemoteConnectionID else { return }
 
         Task {
-            for source in clipboard.sourcePaths {
-                let sourceName = URL(fileURLWithPath: source).lastPathComponent
-                let baseTargetPath = normalizedRemotePath(base: destination, child: sourceName)
+            for item in clipboard.items {
+                let baseTargetPath = normalizedRemotePath(base: destination, child: item.name)
                 guard let targetPath = await resolveRemoteConflictPath(for: baseTargetPath) else {
                     continue
                 }
-                guard targetPath != source else { continue }
+                guard targetPath != item.path else { continue }
 
                 do {
                     switch clipboard.mode {
                     case .copy:
-                        try await sftpClient.copy(from: source, to: targetPath)
+                        try await sftpClient.copy(from: item.path, to: targetPath)
                     case .cut:
-                        try await sftpClient.move(from: source, to: targetPath)
+                        try await sftpClient.move(from: item.path, to: targetPath)
                     }
                 } catch {
                     continue
@@ -922,6 +981,44 @@ final class FileTransferViewModel: ObservableObject {
             invalidateRemoteDirectoryCache()
             await refreshRemoteEntries()
         }
+    }
+
+    func pasteRemoteEntriesResult(into destinationDirectory: String) async -> RemotePasteResult {
+        guard let clipboard = remoteClipboard else {
+            return .success(destinationDirectory: normalizeRemoteDirectoryPath(destinationDirectory), pastedCount: 0, clearsClipboard: false)
+        }
+        let destination = normalizeRemoteDirectoryPath(destinationDirectory)
+        guard clipboard.sourceConnectionID == currentRemoteConnectionID else {
+            return .blockedCrossConnection
+        }
+
+        var pastedCount = 0
+        for item in clipboard.items {
+            let baseTargetPath = normalizedRemotePath(base: destination, child: item.name)
+            guard let targetPath = await resolveRemoteConflictPath(for: baseTargetPath) else {
+                continue
+            }
+            guard targetPath != item.path else { continue }
+            do {
+                switch clipboard.mode {
+                case .copy:
+                    try await sftpClient.copy(from: item.path, to: targetPath)
+                case .cut:
+                    try await sftpClient.move(from: item.path, to: targetPath)
+                }
+                pastedCount += 1
+            } catch {
+                continue
+            }
+        }
+
+        if clipboard.mode == .cut {
+            remoteClipboard = nil
+        }
+
+        invalidateRemoteDirectoryCache()
+        await refreshRemoteEntries()
+        return .success(destinationDirectory: destination, pastedCount: pastedCount, clearsClipboard: clipboard.mode == .cut)
     }
 
     func retryTransfer(itemID: UUID) {
@@ -2004,6 +2101,30 @@ final class FileTransferViewModel: ObservableObject {
         return parent.appendingPathComponent(candidateName).path
     }
 
+    private func nextClonePath(for sourcePath: String, isDirectory: Bool) async throws -> String {
+        let normalizedSource = normalizeRemoteDirectoryPath(sourcePath)
+        let parentDirectory = URL(fileURLWithPath: normalizedSource).deletingLastPathComponent().path
+        let baseDirectory = parentDirectory.isEmpty ? "/" : parentDirectory
+        let originalName = URL(fileURLWithPath: normalizedSource).lastPathComponent
+        let ext = isDirectory ? "" : Self.compoundExtension(for: originalName)
+        let baseName = ext.isEmpty ? originalName : String(originalName.dropLast(ext.count))
+
+        var index = 1
+        while true {
+            let candidateStem = index == 1 ? "\(baseName) copy" : "\(baseName) copy \(index)"
+            let candidateName = candidateStem + ext
+            let candidatePath = normalizedRemotePath(base: baseDirectory, child: candidateName)
+            if await remotePathExists(candidatePath) == false {
+                return candidatePath
+            }
+            index += 1
+        }
+    }
+
+    func nextClonePathForTests(_ sourcePath: String, isDirectory: Bool) async throws -> String {
+        try await nextClonePath(for: sourcePath, isDirectory: isDirectory)
+    }
+
     private func normalizedRemotePath(base: String, child: String) -> String {
         let trimmedChild = child.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedChild.isEmpty else { return normalizeRemoteDirectoryPath(base) }
@@ -2258,5 +2379,16 @@ final class FileTransferViewModel: ObservableObject {
     private static func quoteShellArgument(_ value: String) -> String {
         let escaped = value.replacingOccurrences(of: "'", with: "'\\''")
         return "'\(escaped)'"
+    }
+
+    private static func compoundExtension(for fileName: String) -> String {
+        let lowercased = fileName.lowercased()
+        for suffix in [".tar.gz", ".tar.bz2", ".tar.xz"] {
+            if lowercased.hasSuffix(suffix) {
+                return String(fileName.suffix(suffix.count))
+            }
+        }
+        let ext = URL(fileURLWithPath: fileName).pathExtension
+        return ext.isEmpty ? "" : ".\(ext)"
     }
 }

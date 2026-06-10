@@ -301,6 +301,11 @@ final class FileManagerWorkspaceWindowController: NSWindowController, NSWindowDe
         var refreshQuickPaths: (() -> Void)?
         var copyPathHandler: ((String) -> Void)?
         var toolbarCopyPathHandler: ((String) -> Void)?
+        var copyEntriesHandler: (([RemoteFileEntry]) -> Void)?
+        var cutEntriesHandler: (([RemoteFileEntry]) -> Void)?
+        var pasteEntriesHandler: ((String) -> Void)?
+        var cloneEntryHandler: ((RemoteFileEntry) -> Void)?
+        var moveEntriesHandler: (([RemoteFileEntry]) -> Void)?
 
         self.splitController = FileManagerWindowSplitController(
             selectedPath: viewModel.remoteDirectoryPath,
@@ -408,6 +413,24 @@ final class FileManagerWorkspaceWindowController: NSWindowController, NSWindowDe
                     viewModel.enqueueDownload(remoteEntry: entry)
                 }
             },
+            onCopyEntries: { entries in
+                copyEntriesHandler?(entries)
+            },
+            onCutEntries: { entries in
+                cutEntriesHandler?(entries)
+            },
+            canPasteIntoDirectory: { path in
+                viewModel.canPaste(into: path)
+            },
+            onPasteIntoDirectory: { path in
+                pasteEntriesHandler?(path)
+            },
+            onCloneEntry: { entry in
+                cloneEntryHandler?(entry)
+            },
+            onMoveEntries: { entries in
+                moveEntriesHandler?(entries)
+            },
             onCopyPath: { path in
                 copyPathHandler?(path)
             },
@@ -466,6 +489,38 @@ final class FileManagerWorkspaceWindowController: NSWindowController, NSWindowDe
         }
         toolbarCopyPathHandler = { [weak self] path in
             self?.copyPathToPasteboard(path)
+        }
+        copyEntriesHandler = { [weak self] entries in
+            viewModel.copyRemoteEntries(paths: entries.map(\.path), mode: .copy)
+            self?.toastController.show(message: String(format: tr("Copied %d item(s)."), entries.count))
+        }
+        cutEntriesHandler = { [weak self] entries in
+            viewModel.copyRemoteEntries(paths: entries.map(\.path), mode: .cut)
+            self?.toastController.show(message: String(format: tr("Cut %d item(s)."), entries.count))
+        }
+        pasteEntriesHandler = { [weak self] path in
+            guard let self else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let result = await viewModel.pasteRemoteEntriesResult(into: path)
+                switch result {
+                case .blockedCrossConnection:
+                    self.toastController.show(message: tr("Cross-server paste is not supported yet."))
+                case .success(let destinationDirectory, let pastedCount, _):
+                    guard pastedCount > 0 else { return }
+                    self.toastController.show(
+                        message: String(format: tr("Pasted into %@."), destinationDirectory)
+                    )
+                }
+            }
+        }
+        cloneEntryHandler = { [weak self] entry in
+            viewModel.cloneRemoteEntry(path: entry.path)
+            self?.toastController.show(message: String(format: tr("%@ Copy"), entry.name))
+        }
+        moveEntriesHandler = { [weak self] entries in
+            guard let self else { return }
+            self.presentMoveEntriesPrompt(entries: entries, viewModel: viewModel)
         }
         refreshQuickPaths = { [weak self] in
             self?.splitController.refreshSidebarQuickPaths()
@@ -819,6 +874,38 @@ final class FileManagerWorkspaceWindowController: NSWindowController, NSWindowDe
         if let window {
             alert.beginSheetModal(for: window)
         }
+    }
+
+    private func presentMoveEntriesPrompt(
+        entries: [RemoteFileEntry],
+        viewModel: FileTransferViewModel
+    ) {
+        let sheet = NSWindow()
+        let controller = NSHostingController(
+            rootView: RemoteDirectoryChooserSheet(
+                initialPath: viewModel.remoteDirectoryPath,
+                fileTransfer: viewModel,
+                onConfirm: { [weak self] destination in
+                    guard let self else { return }
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        let movedCount = await viewModel.moveRemoteEntriesResult(
+                            paths: entries.map(\.path),
+                            toDirectory: destination
+                        )
+                        self.window?.endSheet(sheet)
+                        guard movedCount > 0 else { return }
+                        self.toastController.show(
+                            message: String(format: tr("Moved %d item(s) to %@."), movedCount, destination)
+                        )
+                    }
+                }
+            )
+        )
+        sheet.contentViewController = controller
+        sheet.styleMask = [.titled, .closable]
+        sheet.setContentSize(NSSize(width: 460, height: 420))
+        window?.beginSheet(sheet)
     }
 
     private func presentMissingArchiveToolAlert(

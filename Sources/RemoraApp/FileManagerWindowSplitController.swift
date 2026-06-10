@@ -20,6 +20,15 @@ enum FileManagerContextCopyPathResolver {
     }
 }
 
+enum FileManagerPasteTargetResolver {
+    static func targetDirectory(currentPath: String, clickedEntry: RemoteFileEntry?) -> String {
+        if let clickedEntry, clickedEntry.isDirectory {
+            return clickedEntry.path
+        }
+        return currentPath
+    }
+}
+
 @MainActor
 final class FileManagerWindowSplitController: NSSplitViewController {
     enum ExtractDestinationAction: String, Sendable {
@@ -51,6 +60,12 @@ final class FileManagerWindowSplitController: NSSplitViewController {
         onRenameEntry: @escaping (RemoteFileEntry) -> Void,
         onDeleteEntries: @escaping ([RemoteFileEntry]) -> Void,
         onDownloadEntries: @escaping ([RemoteFileEntry]) -> Void,
+        onCopyEntries: @escaping ([RemoteFileEntry]) -> Void,
+        onCutEntries: @escaping ([RemoteFileEntry]) -> Void,
+        canPasteIntoDirectory: @escaping (String) -> Bool,
+        onPasteIntoDirectory: @escaping (String) -> Void,
+        onCloneEntry: @escaping (RemoteFileEntry) -> Void,
+        onMoveEntries: @escaping ([RemoteFileEntry]) -> Void,
         onCopyPath: @escaping (String) -> Void,
         onUploadToDirectory: @escaping (String) -> Void,
         onUploadLocalFiles: @escaping ([URL], String) -> Void
@@ -78,6 +93,12 @@ final class FileManagerWindowSplitController: NSSplitViewController {
             onRenameEntry: onRenameEntry,
             onDeleteEntries: onDeleteEntries,
             onDownloadEntries: onDownloadEntries,
+            onCopyEntries: onCopyEntries,
+            onCutEntries: onCutEntries,
+            canPasteIntoDirectory: canPasteIntoDirectory,
+            onPasteIntoDirectory: onPasteIntoDirectory,
+            onCloneEntry: onCloneEntry,
+            onMoveEntries: onMoveEntries,
             onCopyPath: onCopyPath,
             onUploadToDirectory: onUploadToDirectory,
             onUploadLocalFiles: onUploadLocalFiles
@@ -949,6 +970,12 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
     private let onRenameEntry: (RemoteFileEntry) -> Void
     private let onDeleteEntries: ([RemoteFileEntry]) -> Void
     private let onDownloadEntries: ([RemoteFileEntry]) -> Void
+    private let onCopyEntries: ([RemoteFileEntry]) -> Void
+    private let onCutEntries: ([RemoteFileEntry]) -> Void
+    private let canPasteIntoDirectory: (String) -> Bool
+    private let onPasteIntoDirectory: (String) -> Void
+    private let onCloneEntry: (RemoteFileEntry) -> Void
+    private let onMoveEntries: ([RemoteFileEntry]) -> Void
     private let onCopyPath: (String) -> Void
     private let onUploadToDirectory: (String) -> Void
     private let onUploadLocalFiles: ([URL], String) -> Void
@@ -1010,6 +1037,12 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
         onRenameEntry: @escaping (RemoteFileEntry) -> Void,
         onDeleteEntries: @escaping ([RemoteFileEntry]) -> Void,
         onDownloadEntries: @escaping ([RemoteFileEntry]) -> Void,
+        onCopyEntries: @escaping ([RemoteFileEntry]) -> Void,
+        onCutEntries: @escaping ([RemoteFileEntry]) -> Void,
+        canPasteIntoDirectory: @escaping (String) -> Bool,
+        onPasteIntoDirectory: @escaping (String) -> Void,
+        onCloneEntry: @escaping (RemoteFileEntry) -> Void,
+        onMoveEntries: @escaping ([RemoteFileEntry]) -> Void,
         onCopyPath: @escaping (String) -> Void,
         onUploadToDirectory: @escaping (String) -> Void,
         onUploadLocalFiles: @escaping ([URL], String) -> Void
@@ -1022,6 +1055,12 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
         self.onRenameEntry = onRenameEntry
         self.onDeleteEntries = onDeleteEntries
         self.onDownloadEntries = onDownloadEntries
+        self.onCopyEntries = onCopyEntries
+        self.onCutEntries = onCutEntries
+        self.canPasteIntoDirectory = canPasteIntoDirectory
+        self.onPasteIntoDirectory = onPasteIntoDirectory
+        self.onCloneEntry = onCloneEntry
+        self.onMoveEntries = onMoveEntries
         self.onCopyPath = onCopyPath
         self.onUploadToDirectory = onUploadToDirectory
         self.onUploadLocalFiles = onUploadLocalFiles
@@ -1311,6 +1350,13 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
         )
     }
 
+    private func pasteTargetDirectory() -> String {
+        FileManagerPasteTargetResolver.targetDirectory(
+            currentPath: currentPath,
+            clickedEntry: clickedEntry()
+        )
+    }
+
     private func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
         menu.delegate = self
@@ -1325,6 +1371,11 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
         menu.addItem(withTitle: tr("Rename"), action: #selector(handleRename), keyEquivalent: "")
         menu.addItem(withTitle: tr("Delete"), action: #selector(handleDelete), keyEquivalent: "")
         menu.addItem(withTitle: tr("Download"), action: #selector(handleDownload), keyEquivalent: "")
+        menu.addItem(withTitle: tr("Copy"), action: #selector(handleCopyEntries), keyEquivalent: "")
+        menu.addItem(withTitle: tr("Cut"), action: #selector(handleCutEntries), keyEquivalent: "")
+        menu.addItem(withTitle: tr("Paste"), action: #selector(handlePasteEntries), keyEquivalent: "")
+        menu.addItem(withTitle: tr("Clone"), action: #selector(handleCloneEntry), keyEquivalent: "")
+        menu.addItem(withTitle: tr("Move To"), action: #selector(handleMoveEntries), keyEquivalent: "")
         menu.addItem(withTitle: tr("Copy Path"), action: #selector(handleCopyPath), keyEquivalent: "")
         let compressItem = NSMenuItem(title: tr("Compress as..."), action: nil, keyEquivalent: "")
         compressItem.submenu = buildCompressSubmenu()
@@ -1420,6 +1471,33 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
         onDownloadEntries(entries)
     }
 
+    @objc private func handleCopyEntries() {
+        let entries = clickedOrSelectedEntries()
+        guard !entries.isEmpty else { return }
+        onCopyEntries(entries)
+    }
+
+    @objc private func handleCutEntries() {
+        let entries = clickedOrSelectedEntries()
+        guard !entries.isEmpty else { return }
+        onCutEntries(entries)
+    }
+
+    @objc private func handlePasteEntries() {
+        onPasteIntoDirectory(pasteTargetDirectory())
+    }
+
+    @objc private func handleCloneEntry() {
+        guard let entry = clickedOrSelectedEntries().first else { return }
+        onCloneEntry(entry)
+    }
+
+    @objc private func handleMoveEntries() {
+        let entries = clickedOrSelectedEntries()
+        guard !entries.isEmpty else { return }
+        onMoveEntries(entries)
+    }
+
     @objc private func handleCompressTarGz() {
         handleCompress(format: .tarGz)
     }
@@ -1505,6 +1583,10 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
             case #selector(handleRename),
                  #selector(handleDelete),
                  #selector(handleDownload),
+                 #selector(handleCopyEntries),
+                 #selector(handleCutEntries),
+                 #selector(handleCloneEntry),
+                 #selector(handleMoveEntries),
                  #selector(handleCompressTarGz),
                  #selector(handleCompressTar),
                  #selector(handleCompressZip),
@@ -1518,6 +1600,8 @@ private final class FileManagerFinderDetailController: NSViewController, NSTable
                  #selector(handleExtractToSameNameDirectory),
                  #selector(handleExtractToCustomDirectory):
                 item.isEnabled = canExtract
+            case #selector(handlePasteEntries):
+                item.isEnabled = canPasteIntoDirectory(currentPath)
             case #selector(handleCopyPath):
                 item.isEnabled = true
             default:

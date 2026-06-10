@@ -67,4 +67,26 @@ struct FileManagerContextMenuTests {
 
         #expect(copiedPath == "/srv/releases/app")
     }
+
+    @Test
+    func pasteTargetDirectoryUsesClickedDirectoryOtherwiseFallsBackToCurrentDirectory() {
+        let directory = RemoteFileEntry(
+            name: "logs",
+            path: "/srv/app/logs",
+            size: 0,
+            isDirectory: true,
+            modifiedAt: Date()
+        )
+        let file = RemoteFileEntry(
+            name: "README.md",
+            path: "/srv/app/README.md",
+            size: 32,
+            isDirectory: false,
+            modifiedAt: Date()
+        )
+
+        #expect(FileManagerPasteTargetResolver.targetDirectory(currentPath: "/srv/app", clickedEntry: directory) == "/srv/app/logs")
+        #expect(FileManagerPasteTargetResolver.targetDirectory(currentPath: "/srv/app", clickedEntry: file) == "/srv/app")
+        #expect(FileManagerPasteTargetResolver.targetDirectory(currentPath: "/srv/app", clickedEntry: nil) == "/srv/app")
+    }
 }

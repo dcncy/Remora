@@ -201,12 +201,15 @@
 "Queued %d item(s) for download." = "Queued %d item(s) for download.";
 "Queued %d item(s) for upload to %@." = "Queued %d item(s) for upload to %@.";
 "Pasted into %@." = "Pasted into %@.";
+"Cross-server paste is not supported yet." = "Cross-server paste is not supported yet.";
+"Move queued." = "Move queued.";
 "Retrying failed transfers." = "Retrying failed transfers.";
 "Moved %d item(s) to %@." = "Moved %d item(s) to %@.";
 "Renamed to %@." = "Renamed to %@.";
 "Created \"%@\"." = "Created \"%@\".";
 "Rename" = "Rename";
 "Copy" = "Copy";
+"Clone" = "Clone";
 "Terminal" = "Terminal";
 "Cut" = "Cut";
 "Download Current" = "Download Current";

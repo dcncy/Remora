@@ -120,4 +120,67 @@ struct RemoteArchiveSupportTests {
         let restored = try await client.stat(path: "/restored/logs/app.log")
         #expect(restored.isDirectory == false)
     }
+
+    @MainActor
+    @Test
+    func remoteClipboardTracksConnectionMetadata() async throws {
+        let vm = FileTransferViewModel(sftpClient: MockSFTPClient(), remoteDirectoryPath: "/logs")
+        vm.bindSFTPClient(MockSFTPClient(), bindingKey: "host-a", initialRemoteDirectory: "/logs")
+        vm.copyRemoteEntries(paths: ["/logs/app.log"], mode: .copy)
+
+        let clipboard = try #require(vm.remoteClipboard)
+        #expect(clipboard.sourceConnectionID == "host-a")
+        #expect(clipboard.sourceParentDirectory == "/logs")
+        #expect(clipboard.items.map(\.name) == ["app.log"])
+    }
+
+    @MainActor
+    @Test
+    func pasteIsBlockedAcrossConnections() async throws {
+        let vm = FileTransferViewModel(sftpClient: MockSFTPClient(), remoteDirectoryPath: "/")
+        vm.bindSFTPClient(MockSFTPClient(), bindingKey: "host-a", initialRemoteDirectory: "/")
+        vm.copyRemoteEntries(paths: ["/logs/app.log"], mode: .copy)
+        vm.bindSFTPClient(MockSFTPClient(), bindingKey: "host-b", initialRemoteDirectory: "/")
+
+        let result = await vm.pasteRemoteEntriesResult(into: "/")
+        #expect(result == .blockedCrossConnection)
+    }
+
+    @MainActor
+    @Test
+    func cloneNamingUsesCopySuffixAndPreservesCompoundExtension() async throws {
+        let vm = FileTransferViewModel(sftpClient: MockSFTPClient(), remoteDirectoryPath: "/")
+        let next = try await vm.nextClonePathForTests("/archive.tar.gz", isDirectory: false)
+        #expect(next == "/archive copy.tar.gz")
+    }
+
+    @MainActor
+    @Test
+    func pasteKeepsClipboardForCopyButClearsForCut() async throws {
+        let copyVM = FileTransferViewModel(sftpClient: MockSFTPClient(), remoteDirectoryPath: "/")
+        copyVM.bindSFTPClient(MockSFTPClient(), bindingKey: "host-a", initialRemoteDirectory: "/")
+        copyVM.copyRemoteEntries(paths: ["/README.txt"], mode: .copy)
+        let copyResult = await copyVM.pasteRemoteEntriesResult(into: "/logs")
+        #expect(copyResult == .success(destinationDirectory: "/logs", pastedCount: 1, clearsClipboard: false))
+        #expect(copyVM.remoteClipboard != nil)
+
+        let cutVM = FileTransferViewModel(sftpClient: MockSFTPClient(), remoteDirectoryPath: "/")
+        cutVM.bindSFTPClient(MockSFTPClient(), bindingKey: "host-a", initialRemoteDirectory: "/")
+        cutVM.copyRemoteEntries(paths: ["/README.txt"], mode: .cut)
+        let cutResult = await cutVM.pasteRemoteEntriesResult(into: "/logs")
+        #expect(cutResult == .success(destinationDirectory: "/logs", pastedCount: 1, clearsClipboard: true))
+        #expect(cutVM.remoteClipboard == nil)
+    }
+
+    @MainActor
+    @Test
+    func moveRemoteEntriesResultReturnsMovedCount() async throws {
+        let vm = FileTransferViewModel(sftpClient: MockSFTPClient(), remoteDirectoryPath: "/")
+        let movedCount = await vm.moveRemoteEntriesResult(paths: ["/README.txt"], toDirectory: "/logs")
+        #expect(movedCount == 1)
+        await vm.refreshRemoteEntries()
+        vm.navigateRemote(to: "/logs")
+        await vm.refreshRemoteEntries()
+        #expect(vm.remoteEntries.contains(where: { $0.path == "/logs/README.txt" }))
+    }
 }
