@@ -92,12 +92,11 @@ Remora 聚焦在一个实用组合：
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <strong>Docker 原生工作区</strong><br />
-      <img src="./docs/screenshots/remora-docker-workspace-2026-06-10.png" alt="Remora native Docker workspace" />
-    </td>
-    <td width="50%" valign="top">
       <strong>Terminal AI 设置</strong><br />
       <img src="./docs/screenshots/PixPin_2026-03-20_11-28-21.png" alt="Remora Terminal AI drawer" />
+    </td>
+    <td width="50%" valign="top">
+      &nbsp;
     </td>
   </tr>
 </table>

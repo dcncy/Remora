@@ -15,7 +15,3 @@ description: Remora 应用截图展示
 ## 独立文件管理窗口 + 传输进度
 
 ![Remora standalone file manager window with transfers](/remora-file-manager-window-transfers-2026-06-10.png)
-
-## Docker 原生工作区
-
-![Remora native Docker workspace](/remora-docker-workspace-2026-06-10.png)

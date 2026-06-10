@@ -91,12 +91,11 @@ When a script runs from an SSH host context, Remora injects `REMORA_HOST_ID`, `R
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <strong>Native Docker Workspace</strong><br />
-      <img src="./docs/screenshots/remora-docker-workspace-2026-06-10.png" alt="Remora native Docker workspace" />
-    </td>
-    <td width="50%" valign="top">
       <strong>Terminal AI Settings</strong><br />
       <img src="./docs/screenshots/PixPin_2026-03-20_11-28-21.png" alt="Remora Terminal AI drawer" />
+    </td>
+    <td width="50%" valign="top">
+      &nbsp;
     </td>
   </tr>
 </table>
